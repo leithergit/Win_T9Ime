@@ -1,5 +1,6 @@
-add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp)
-target_link_libraries(t9_unit_tests PRIVATE t9core)
+add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp)
+target_link_libraries(t9_unit_tests PRIVATE t9core t9panel)
+t9_win7_subsystem(t9_unit_tests CONSOLE)
 target_include_directories(t9_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}/third_party/doctest")
 target_compile_definitions(t9_unit_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 add_test(NAME unit COMMAND t9_unit_tests)
@@ -18,4 +19,14 @@ endforeach()
 # Windows 7 SP1 must be able to load every shipped binary.
 add_test(NAME win7_imports
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/check_imports/check_imports.py"
-          "$<TARGET_FILE:t9repl>" "$<TARGET_FILE:t9_unit_tests>" "$<TARGET_FILE:rime>")
+          "$<TARGET_FILE:t9repl>" "$<TARGET_FILE:t9_unit_tests>" "$<TARGET_FILE:T9Host>"
+          "$<TARGET_FILE:test_target>" "$<TARGET_FILE:rime>")
+
+# End-to-end panel test: drives the real mouse cursor, needs an interactive desktop.
+add_executable(test_target WIN32 probes/test_target.cpp)
+t9_win7_subsystem(test_target WINDOWS)
+add_test(NAME e2e_panel
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/panel_e2e.py"
+          --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>"
+          --work "${CMAKE_BINARY_DIR}/e2e")
+set_tests_properties(e2e_panel PROPERTIES LABELS e2e RUN_SERIAL TRUE)

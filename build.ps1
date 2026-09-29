@@ -28,7 +28,7 @@ try {
     cmake --build --preset $Preset
     if ($LASTEXITCODE) { throw 'build failed' }
     if (-not $NoTest) {
-        ctest --preset $Preset
+        ctest --preset $Preset -LE e2e
         if ($LASTEXITCODE) { throw 'tests failed' }
     }
 } finally {

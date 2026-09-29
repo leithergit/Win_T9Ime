@@ -1,11 +1,11 @@
 > schema t9_eng
   input=[] preedit=[]
 > k 43556
-  input=[43556] preedit=[43556] cands=hello
+  input=[43556] preedit=[hello] cands=hello
 > space
   input=[] preedit=[] commit=[hello]
 > k 9675
-  input=[9675] preedit=[9675] cands=work York world works worked
+  input=[9675] preedit=[work] cands=work York world works worked
 > esc
   input=[] preedit=[]
 > schema rime_ice

@@ -87,6 +87,8 @@ class Session {
   bool SelectOnPage(size_t index);
   bool ChangePage(bool backward);
 
+  bool HasInput() const { return !Input().empty(); }
+
   // Raw X11 keysym (physical keyboard path).
   bool ProcessKey(int keycode, int mask = 0);
 

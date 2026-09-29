@@ -55,3 +55,17 @@
 **下一步**
 - 回收同事的 M1 真机结果。
 - M2：P2 探针（不激活窗口 + WM_TOUCH/WM_POINTER），T9Host 单实例 + 引擎线程 + 面板 + SendInput 上屏。
+
+## 2026-09-29 — M2 进行中（Host 与面板，SendInput 路径）
+
+**完成**
+- `src/common/win_compat`：Win8+ API 动态加载（指针、DPI、触摸反馈）、RtlGetVersion、深色主题检测。
+- T9Host：单实例（Local\T9Ime.Host.<SID>）、引擎线程（命令队列 + 快照；Passthrough 保证上屏顺序）、托盘（显示/隐藏、停靠底部、退出）、PMv2 manifest（Win7 回退 System DPI）。
+- 面板：不激活窗口（MA_NOACTIVATE / PA_NOACTIVATE）、输入统一（WM_POINTER / WM_TOUCH / 鼠标，`--input` 可强制）、D2D + DWrite 渲染、中文/英文九键、数字、符号布局、拼音栏、候选栏横向滚动与展开网格、长按连删、左滑清空、长按数字键输入数字、拖动与位置保存、深浅色。
+- 测试：面板布局单元测试；`tests/e2e/panel_e2e.py` 用真实鼠标点击面板，把字输入测试窗口（x64/x86 全部 PASS，焦点始终不丢失）；`ctest -LE e2e` 为默认。
+- 测试包 `dist/M2/T9Ime-M2-test.zip`（含 panel.bat），本机 run.bat 通过。
+
+**未完成（下一步）**
+- 编写 `Docs/testing/M2-checklist.md`（Win7 触摸真机：焦点不丢失、WM_TOUCH 与 `panel.bat mouse` 对比、长按/滑动/拖动）。
+- 面板尺寸调整、英文九键 1 键交互细节。
+- 更新 ARCHITECTURE/CLAUDE.md 中的 bin/ 目录布局说明，然后提交 M2。

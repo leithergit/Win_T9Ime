@@ -2,6 +2,7 @@
 
 #include <rime_api.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <system_error>
 
@@ -213,7 +214,11 @@ EngineState Session::State() {
       s.page.push_back({Str(ctx.menu.candidates[i].text), Str(ctx.menu.candidates[i].comment)});
     }
     s.preedit = s.raw_preedit;
-    if (NineKey() && !s.input.empty()) {
+    if (schema_id_ == "t9_eng" && !s.page.empty()) {
+      // English nine-key: the digits mean nothing to the user; show the word.
+      const int h = std::clamp(s.highlighted, 0, static_cast<int>(s.page.size()) - 1);
+      s.preedit = s.page[h].text;
+    } else if (NineKey() && !s.input.empty()) {
       const std::string_view prefix = SelectedPrefix(s.raw_preedit);
       std::string rest(s.raw_preedit.substr(prefix.size()));
       std::erase(rest, ' ');

@@ -1,7 +1,8 @@
 # Builds a portable test package for real-device testing (Windows 7 touch devices).
 #   .\tools\make_test_package.ps1 -Milestone M1
 # Output: dist\<Milestone>\T9Ime-<Milestone>-test.zip containing x86\ and x64\ builds,
-# the shared data directory, regression scripts with expected output, and run.bat.
+# the shared data directory, regression scripts with expected output, run.bat
+# (engine tests) and panel.bat (touch panel with a test target window).
 param([string]$Milestone = 'M1')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -11,13 +12,13 @@ if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 foreach ($arch in 'x86', 'x64') {
-    $build = Join-Path $root "out\build\$arch-Release"
-    if (-not (Test-Path "$build\tools\t9repl\t9repl.exe")) { throw "build $arch-Release first" }
+    $bin = Join-Path $root "out\build\$arch-Release\bin"
+    if (-not (Test-Path "$bin\T9Host.exe")) { throw "build $arch-Release first" }
     New-Item -ItemType Directory -Force "$stage\$arch" | Out-Null
-    Copy-Item "$build\tools\t9repl\t9repl.exe", "$build\tools\t9repl\rime.dll" "$stage\$arch"
+    Copy-Item "$bin\t9repl.exe", "$bin\rime.dll", "$bin\T9Host.exe", "$bin\test_target.exe" "$stage\$arch"
 }
 # Data is architecture independent. robocopy /COPY:DAT keeps timestamps.
-robocopy (Join-Path $root 'out\build\x64-Release\data') "$stage\data" /E /COPY:DAT /DCOPY:T /XF .t9ime-data-stamp /NFL /NDL /NJH /NJS | Out-Null
+robocopy (Join-Path $root 'out\build\x64-Release\bin\data') "$stage\data" /E /COPY:DAT /DCOPY:T /XF .t9ime-data-stamp /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw 'robocopy failed' }
 
 New-Item -ItemType Directory -Force "$stage\tests" | Out-Null
@@ -52,6 +53,24 @@ if "%FAIL%"=="0" (echo ALL PASSED) else (echo SOME TESTS FAILED - send the resul
 endlocal
 pause
 '@ | Set-Content -Encoding ascii "$stage\run.bat"
+
+# Touch panel launcher: T9Host with a throw-away user directory; the input mode
+# can be forced (touch = WM_TOUCH, mouse = promoted mouse messages, pointer = Win8+).
+@'
+@echo off
+rem Usage: panel.bat [touch|mouse|pointer]   (default: automatic)
+setlocal
+cd /d "%~dp0"
+set ARCH=x86
+if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set ARCH=x64
+if /i "%PROCESSOR_ARCHITEW6432%"=="AMD64" set ARCH=x64
+set MODE=
+if not "%1"=="" set MODE=--input %1
+taskkill /im T9Host.exe /f > nul 2>&1
+start "" "%ARCH%\T9Host.exe" --data "%~dp0data" --user "%TEMP%\t9ime-panel-user" --settings "%TEMP%\t9ime-panel.ini" --show %MODE%
+start "" "%ARCH%\test_target.exe"
+endlocal
+'@ | Set-Content -Encoding ascii "$stage\panel.bat"
 
 $zip = Join-Path $dist "T9Ime-$Milestone-test.zip"
 $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"

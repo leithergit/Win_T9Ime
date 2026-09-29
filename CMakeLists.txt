@@ -21,7 +21,14 @@ endif()
 add_compile_definitions(_WIN32_WINNT=0x0601 WINVER=0x0601 NTDDI_VERSION=0x06010000
                         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_compile_options(/utf-8 /W4 /permissive- /Zc:__cplusplus /EHsc)
-add_link_options(/SUBSYSTEM:CONSOLE,6.01)
+
+# Mark an executable as runnable on Windows 7 (subsystem version 6.01).
+function(t9_win7_subsystem target kind)
+  target_link_options(${target} PRIVATE "/SUBSYSTEM:${kind},6.01")
+endfunction()
+
+# Executables, rime.dll and data share one directory, like the installed layout.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -41,8 +48,8 @@ if(NOT EXISTS "${T9_RIME_ICE_DIR}/t9.schema.yaml")
   message(FATAL_ERROR "rime-ice not found: run data/fetch_rime_ice.ps1")
 endif()
 
-# ---- Pre-deployed Rime data: ${CMAKE_BINARY_DIR}/data ----
-set(T9_DATA_DIR "${CMAKE_BINARY_DIR}/data")
+# ---- Pre-deployed Rime data: ${CMAKE_BINARY_DIR}/bin/data ----
+set(T9_DATA_DIR "${CMAKE_BINARY_DIR}/bin/data")
 add_custom_target(rime_data ALL
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/prepare_data.py"
           --rime-ice "${T9_RIME_ICE_DIR}"
@@ -55,6 +62,13 @@ add_custom_target(rime_data ALL
 
 enable_testing()
 
+add_custom_target(copy_rime_dll ALL
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/bin"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${T9_LIBRIME_DIR}/bin/rime.dll" "${CMAKE_BINARY_DIR}/bin"
+  VERBATIM)
+
+add_subdirectory(src/common)
 add_subdirectory(src/host/engine)
+add_subdirectory(src/host)
 add_subdirectory(tools/t9repl)
 add_subdirectory(tests)
