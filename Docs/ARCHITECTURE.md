@@ -15,15 +15,18 @@
 | U6 | 面板被点击而本 IME 未激活时**自动切换**到本 IME | 新增 Host→系统的 profile 激活流程（§6.4） |
 | U7 | 支持 **Windows 7 SP1 – Windows 11** | §1 由 Win10 1809+ 扩大；Win8+ API 全部动态加载 + 降级 |
 | U8 | 支持 **32 位操作系统** | x86 也构建完整 Host + rime.dll |
-| U9 | Win7 前置补丁：**SP1 + KB4474419（SHA-2）+ KB2670838（平台更新）** | 安装器检测，缺失则拒绝安装并提示 |
+| U9 | Win7 前置补丁：**SP1 + KB2670838（平台更新）强制**，KB4474419（SHA-2）建议 | 安装器检测：缺强制项拒绝安装，缺建议项提示 |
 | U10 | 物理键盘候选窗**在 TIP 进程内绘制**（沿用 Weasel）；面板及面板模式候选由 T9Host 绘制 | §3 "Host 画候选窗"改为分离 |
 | U11 | Win7 分级：**emoji 禁用**；自动弹出用 `GetMessageExtraInfo` 推断；安装时关闭 Win7 平板输入面板自动弹出 | 见 §9 |
+| U12 | **主要目标设备是公司的 Win7 触屏机**；开发机无触屏，真机测试由同事完成 | Win7 + WM_TOUCH 是一等路径，不是降级路径；每个里程碑交付测试包 + 测试清单 |
+| U13 | **不支持 Win8/8.1**（暂不考虑）；**不支持 ARM64** | 分级只剩 Win7 与 Win10/11 两档 |
+| U14 | 允许 TIP 线程级 `WH_GETMESSAGE` 钩子；不支持 OTS 提权；TabTip 接管默认勾选且不用未公开接口；KB4474419 建议安装（不强制），KB2670838 强制；弃用 WTL 设置界面；启用英文九键；**移除 radical_pinyin 反查** | 见各节 |
 
 ## 1. 进程与模块
 
 ```
 ┌─────────────────────────── 应用进程（任意：Win32/WPF/UWP/提权/AppContainer）────────────────┐
-│ T9Tip.dll（x86 / x64 / ARM64X 可选）  —— 由 WeaselTSF 裁剪                                     │
+│ T9Tip.dll（x86 / x64）  —— 由 WeaselTSF 裁剪                                     │
 │  · TSF 接口、按键判定（OnTestKeyDown 执行并缓存）、composition、edit session                    │
 │  · 物理键盘候选窗（WeaselUI 精简版：D2D1.0 DC RT + DWrite + GDI，layered）                      │
 │  · UIElement / InputScope / compartment 双向同步 / 焦点与触摸来源上报                           │
@@ -72,7 +75,7 @@ third_party/       librime 预编译包（脚本下载，SHA-256 校验）、wea
 Docs/              SPEC、ARCHITECTURE、PLAN、research/
 ```
 
-构建：CMake + Ninja + CMakePresets，MSVC v143，C++20，`/MT`。预设 `x64-Release`、`x86-Release`（两者都构建全部组件，因为 U8），`arm64-Release` 可选（仅 TIP）。全局 `_WIN32_WINNT=0x0601`、`WINVER=0x0601`。
+构建：CMake + Ninja + CMakePresets，MSVC v143，C++20，`/MT`。预设 `x64-Release`、`x86-Release`（两者都构建全部组件，因为 U8）。全局 `_WIN32_WINNT=0x0601`、`WINVER=0x0601`。
 
 ## 3. IPC 设计（重写 Weasel IPC，去 boost）
 
@@ -111,7 +114,7 @@ Ctl：见 §7。
 5. 按键：保留"OnTestKeyDown 即执行并缓存结果、OnKeyDown 返回缓存"，但缓存改为**每线程**、以 (wParam, lParam, 时间戳) 校验，不一致则重新处理；进程级 static 改为线程局部。
 6. compartment 双向同步：OPENCLOSE 按真实开关；CONVERSION 的 NATIVE 位 → Host `set_option(ascii_mode)`；回写加 guard 防回环。
 7. InputScope：`OnSetFocus` 与 `OnEndEdit` 中读 `GUID_PROP_INPUTSCOPE`（`ITfInputScope::GetInputScopes`），随 FocusIn 上报；密码/私密 → 不组字、强制英文；数字/电话 → 面板默认数字键盘；URL/Email → 英文；只读/无上下文 → 不弹面板。
-8. 触摸来源判定：`GetCurrentInputMessageSource` → `GetCIMSSM` →（Win7 及兜底）**线程级** `WH_GETMESSAGE` 钩子记录最近鼠标消息的 `GetMessageExtraInfo`（`(x & 0xFFFFFF00)==0xFF515700` 表示触摸/笔提升）。钩子只挂 TIP 所在线程，不是全局钩子（待确认 Q1）。
+8. 触摸来源判定：`GetCurrentInputMessageSource` → `GetCIMSSM` →（Win7 及兜底）**线程级** `WH_GETMESSAGE` 钩子记录最近鼠标消息的 `GetMessageExtraInfo`（`(x & 0xFFFFFF00)==0xFF515700` 表示触摸/笔提升）。钩子只挂 TIP 所在线程，不是全局钩子（用户已确认允许，U14）。
 9. 推送：`ActivateEx` 时在线程管理器线程创建 `HWND_MESSAGE` 窗口；进程级事件线程收到推送后按 tid 找窗口 `PostMessage`；UI 线程校验焦点 seq 后 `RequestEditSession(TF_ES_ASYNCDONTCARE|TF_ES_READWRITE)`，edit session 对象自带全部数据；无焦点/只读/断开 → ack `consumed=false`。取消 Weasel 的 `SendInput(VK_SELECT)` 选词方式，鼠标选词也走 edit session。
 10. 候选窗（TIP 内）：WeaselUI 精简，D2D 1.0（`ID2D1DCRenderTarget`，Win7 SP1+PU 可用）+ DWrite + GDI。样式由 Host 下发（styleRev 变化才传）。面板可见时隐藏。`BeginUIElement` 返回 show=FALSE 时不创建窗口，只提供 `ITfCandidateListUIElement(Behavior)`。发出 `EVENT_OBJECT_IME_SHOW/HIDE/CHANGE`。
 11. 注册：仅 zh-CN(0x0804) 一个 profile；类别仅 SPEC §4 所列（去掉 Weasel 的 SECUREMODE、COMLESS 等多余类别）；DLL 装在 Program Files 而非 System32；`DllRegisterServer/Unregister` 幂等；修正 `Register.cpp` 的 "Microsft" 笔误。
@@ -133,7 +136,7 @@ Ctl：见 §7。
 
 ### 5.3 schema 补丁（data/custom/）
 - `t9.custom.yaml`：从 `engine/processors` 去掉 `t9_processor`（官方 librime 中不存在，缺失只报错不影响功能 **[实测]**）；保留 lua_translator（U3）；Win7 上通过 `set_option("emoji", false)` 关闭 emoji（U11），不改 schema。
-- `rime_ice.custom.yaml`：保留全部 lua；是否去 radical_pinyin 反查（省约 1.4 MB）列为可选。
+- `rime_ice.custom.yaml`：保留全部 lua；**移除 radical_pinyin 部件拆字反查**（U14，省约 1.4 MB 压缩后）：去掉 `reverse_lookup_filter@radical_reverse_lookup`、`affix_segmentor@radical_lookup`、`lua_filter@*search@radical_pinyin` 及其依赖。
 - 编码为**数字码**（`derive/[abc]/2/`…），SPEC §5 的"大写字母码"已过时 **[实测]**。
 
 ### 5.4 九键前端（`src/host/engine/t9/`，纯 C++，可单测）
@@ -153,8 +156,8 @@ Ctl：见 §7。
 - `WS_POPUP`，`WS_EX_NOACTIVATE|WS_EX_TOPMOST|WS_EX_TOOLWINDOW`；`WM_MOUSEACTIVATE→MA_NOACTIVATE`，`WM_POINTERACTIVATE→PA_NOACTIVATE`（Win8+）；`SW_SHOWNOACTIVATE`。
 - 输入：Win8+ 处理 `WM_POINTER*` 且不交给 DefWindowProc，`SetWindowFeedbackSetting` 关系统反馈；**Win7** 用 `RegisterTouchWindow`（WM_TOUCH）+ 鼠标消息，`MicrosoftTabletPenServiceProperty` 关长按右键。两套输入统一抽象为 `PanelPointerEvent`。
 - 绘制：D2D `ID2D1HwndRenderTarget` + DWrite（Win7 SP1+PU 可用），按下态、长按连删、左滑清空自绘。
-- DPI：manifest `dpiAware=true/pm` + `dpiAwareness=PerMonitorV2,PerMonitor`；Win10 1703+ PMv2，Win8.1 PMv1（动态加载 Shcore），Win7 System DPI。
-- 深浅色：Win10+ 读 `AppsUseLightTheme` 并监听 `WM_SETTINGCHANGE`；Win7/8.1 用浅色或设置中手选。
+- DPI：manifest `dpiAware=true/pm` + `dpiAwareness=PerMonitorV2,PerMonitor`；Win10 1703+ PMv2，Win7 System DPI。
+- 深浅色：Win10+ 读 `AppsUseLightTheme` 并监听 `WM_SETTINGCHANGE`；Win7 用浅色或设置中手选。
 - 停靠/拖动：自己在指针移动中移动窗口；可选 AppBar 停靠底部；避开屏幕边缘手势区。位置尺寸按显示器保存到 %APPDATA%。
 
 ### 6.2 布局
@@ -196,20 +199,22 @@ Ctl：见 §7。
 
 ## 9. Windows 版本分级
 
-| 能力 | Win10 1809+/Win11 | Win8.1 | Win7 SP1(+KB4474419+KB2670838) |
-|---|---|---|---|
-| 物理键盘全拼、TIP 候选窗 | ✓ | ✓ | ✓ |
-| 面板触摸输入 | WM_POINTER | WM_POINTER | WM_TOUCH + 鼠标 |
-| 自动弹出判定 | GetCurrentInputMessageSource + 钩子兜底 | 同左 | 线程级钩子 + GetMessageExtraInfo（偶有误判） |
-| TabTip 共存 | 关闭自动弹出 + InputPane 让位 | 同左 | 关闭平板输入面板自动弹出 |
-| DPI | Per-Monitor V2 | Per-Monitor V1 | System DPI |
-| 深浅色跟随 | ✓ | 手选 | 手选 |
-| emoji 候选 | ✓ | ✓（Segoe UI Emoji） | **禁用** |
-| 面板在开始菜单搜索中 | 不弹出（§6.6） | 不弹出 | 可用（Win7 开始菜单是普通窗口）**[需实测]** |
-| AppContainer 应用 | ✓ | ✓ | 不适用 |
-| 自动切换本 IME | FORSESSION + 兜底 | 同左 | 兜底 WM_INPUTLANGCHANGEREQUEST 为主（按线程模式）**[需实测]** |
+Win8/8.1 不在支持范围（U13），代码上按"< Win10 走 Win7 路径"处理。
 
-工具链风险：MSVC v143 静态 CRT 生成的二进制在 Win7 上可运行性 **[需实测]**，以 Win7 SP1 x86/x64 虚拟机冒烟测试 + `check_imports` 双保险。安装器 Inno Setup 6.3+ 最低支持 Win7 SP1 **[文档]**。Win7 需 KB4474419 的原因改为：安装包/二进制未来签名（SHA-256）时的验证，以及 Windows Update 兼容；若始终不签名可放宽（Q4）。
+| 能力 | Win10 1809+/Win11 | Win7 SP1(+KB2670838，建议 KB4474419)——**主要目标** |
+|---|---|---|
+| 物理键盘全拼、TIP 候选窗 | ✓ | ✓ |
+| 面板触摸输入 | WM_POINTER | WM_TOUCH + 鼠标 |
+| 自动弹出判定 | GetCurrentInputMessageSource + 线程级钩子兜底 | 线程级钩子 + GetMessageExtraInfo（偶有误判） |
+| TabTip 共存 | 关闭自动弹出 + InputPane 让位 | 关闭平板输入面板自动弹出 |
+| DPI | Per-Monitor V2 | System DPI |
+| 深浅色跟随 | ✓ | 手选 |
+| emoji 候选 | ✓ | **禁用** |
+| 面板在开始菜单搜索中 | 不弹出（§6.6） | 可用（Win7 开始菜单是普通窗口）**[需实测]** |
+| AppContainer 应用 | ✓ | 不适用 |
+| 自动切换本 IME | FORSESSION + 兜底 | 兜底 WM_INPUTLANGCHANGEREQUEST 为主（按线程模式）**[需实测]** |
+
+工具链风险：MSVC v143 静态 CRT 生成的二进制在 Win7 上可运行性 **[需实测]**：构建期 `check_imports` 拦截 Win7 不存在的静态导入，每个里程碑的测试包交同事在 Win7 触屏真机冒烟。安装器 Inno Setup 6.3+ 最低支持 Win7 SP1 **[文档]**。KB2670838（平台更新，D2D/DWrite）强制；KB4474419（SHA-2）仅建议，未来启用签名时再改为强制。
 
 ## 10. 数据、体积、许可证
 

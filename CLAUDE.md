@@ -3,12 +3,13 @@
 新会话先读本文件和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M0（调研与计划）已完成，等待用户确认 `Docs/PLAN.md` 末尾的问题清单后进入 M1。尚无代码。
+M0 已完成并经用户确认（PLAN.md "决策结果"）。当前：M1 引擎原型。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
 - **不用 uiAccess**；单一 T9Host 进程（引擎 + 面板）；物理键盘候选窗在 TIP 进程内绘制。
-- 支持 Win7 SP1 – Win11，x86 与 x64 都是完整构建；`_WIN32_WINNT=0x0601`，Win8+ API 一律动态加载。
+- 支持 Win7 SP1 与 Win10/11（**不支持 Win8.x、ARM64**），x86 与 x64 都是完整构建；`_WIN32_WINNT=0x0601`，Win8+ API 一律动态加载。
+- **主要目标设备是公司的 Win7 触屏机**；开发机无触屏，触摸行为由同事真机测试——每个里程碑交付测试包 + `Docs/testing/` 清单。鼠标与触摸必须走同一面板代码路径。
 - librime 1.17.0 官方包（内置 librime-lua）；rime-ice 完整词库，固定 commit `3aea6d3694fb3d94ec663641f021f788822897ad`。
 - t9 方案是**数字码**（不是 SPEC 写的大写字母码）；`t9_processor` 用 t9.custom.yaml 移除。
 
@@ -20,7 +21,7 @@ M0（调研与计划）已完成，等待用户确认 `Docs/PLAN.md` 末尾的�
 - TIP：除系统 DLL 外零依赖；禁止 boost/.NET/Qt/C++WinRT；所有 COM 方法 `noexcept` 且内部 try/catch；不在宿主进程做耗时操作、不弹 MessageBox、不 ShellExecute。
 - Host：只依赖 librime 和系统库；librime 调用只在引擎线程。
 - 不记录任何用户输入内容；日志仅 Debug 构建且默认关闭。
-- 禁止全局键盘钩子与 DLL 注入（线程级钩子待 Q1 确认）。
+- 禁止全局键盘钩子与 DLL 注入；TIP 所在线程的线程级 `WH_GETMESSAGE` 钩子已获允许。
 - 遇到 API 行为不确定，先在 `tests/probes/` 写最小复现，不要猜。
 
 ## 已知陷阱
