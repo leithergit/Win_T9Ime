@@ -1,0 +1,9 @@
+# T9Ime: only the schemas the product uses.
+#   rime_ice  physical keyboard (全拼)
+#   t9        touch panel, Chinese (中文九键)
+#   t9_eng    touch panel, English (英文九键)
+patch:
+  schema_list:
+    - schema: rime_ice
+    - schema: t9
+    - schema: t9_eng

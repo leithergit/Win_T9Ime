@@ -1,0 +1,33 @@
+# SPEC §11 examples and the core nine-key flows (t9 schema, fresh user dir).
+k 94664486
+bar
+space
+k 744
+space
+# pinyin bar pick, then commit
+k 94664486
+pick 1
+bar
+enter
+# undo a confirmed syllable with BackSpace
+k 94664486
+pick 1
+bs
+bs
+bs
+bs
+esc
+# 1 key as separator
+k 94
+k 1
+k 4486
+esc
+# partial selection keeps the rest in composition; the pinyin bar is hidden
+k 94664486
+sel 23
+sel 1
+# learning: the selected word is remembered
+k 744
+sel 8
+k 744
+esc

@@ -3,7 +3,7 @@
 新会话先读本文件和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M0 已完成并经用户确认（PLAN.md "决策结果"）。当前：M1 引擎原型。
+M1（引擎原型）已完成，Win7 真机测试包已交付待回收。下一步：M2 Host 与面板。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -13,9 +13,14 @@ M0 已完成并经用户确认（PLAN.md "决策结果"）。当前：M1 引擎�
 - librime 1.17.0 官方包（内置 librime-lua）；rime-ice 完整词库，固定 commit `3aea6d3694fb3d94ec663641f021f788822897ad`。
 - t9 方案是**数字码**（不是 SPEC 写的大写字母码）；`t9_processor` 用 t9.custom.yaml 移除。
 
-## 构建（M1 起生效，待补充）
-- CMake + Ninja + CMakePresets，MSVC v143，C++20，`/MT`。预设：`x64-Release`、`x86-Release`（均为全部组件）。
-- 第三方：`third_party/fetch_librime.ps1`、`data/fetch_rime_ice.ps1`（SHA-256 校验）。
+## 构建
+- 一键：`pwsh -File build.ps1 -Preset x64-Release`（进入 VS2022 开发环境 → cmake 配置 → 构建 → ctest）；`-NoTest` 跳过测试，`-Fetch` 重新下载依赖。预设：`x64/x86-Debug/Release`，产物在 `out/build/<preset>/`。
+- 从 Bash 调用时用 `pwsh -NoProfile -File build.ps1 ... > log 2>&1` 再 grep，直接在 PowerShell 工具里跑会因 throw 丢输出。
+- 依赖：`third_party/fetch_librime.ps1`（librime 1.17.0 x64/x86 + opencc，SHA-256 校验）、`data/fetch_rime_ice.ps1`（rime-ice 固定 commit）。两者产物不入库。
+- Rime 数据：构建目标 `rime_data` 运行 `tools/prepare_data.py` → `out/build/<preset>/data`（首次约 45 s，有 stamp 缓存）。
+- 测试：`unit`（doctest）、`regress_*`（`tests/regress/*.t9` 经 t9repl 与 `.expected` 快照比对；改动后用 `run_regress.py --update` 重写并审阅 diff）、`win7_imports`（`tools/check_imports` 检查 Win7 不存在的静态导入）。
+- 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
+- 引擎调试：`out/build/x64-Release/tools/t9repl/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
 
 ## 编码规范
 - TIP：除系统 DLL 外零依赖；禁止 boost/.NET/Qt/C++WinRT；所有 COM 方法 `noexcept` 且内部 try/catch；不在宿主进程做耗时操作、不弹 MessageBox、不 ShellExecute。
@@ -25,7 +30,8 @@ M0 已完成并经用户确认（PLAN.md "决策结果"）。当前：M1 引擎�
 - 遇到 API 行为不确定，先在 `tests/probes/` 写最小复现，不要猜。
 
 ## 已知陷阱
-- 预部署的 `build/*.bin` 与 yaml 必须**保留 mtime** 复制，否则首次启动重建 prism（约 9 s）。
+- librime 的 maintenance 按文件 mtime 判断是否重建；zip（2 秒精度、本地时区）解压后会触发约 7 s 的重建。因此 **RimeEngine 默认不跑 maintenance**（`Options::maintenance=false`），直接用预部署数据。代价：用户改配置后必须显式重新部署；升级时要清理用户目录 `build/`（staging 会遮蔽新的预部署数据）——M6 处理。
+- 英文九键是独立方案 `t9_eng`（`data/custom/t9_eng.schema.yaml`，xlit 数字码，单独 prism）。不要把 melt_eng 挂进 t9：非主翻译器的 prism 不会被部署，而且 derive 会让英文 prism 膨胀。
 - `RimeContext.composition.cursor_pos/sel_*` 是 preedit 的 **UTF-8 字节偏移**。
 - 官方 librime 无 `t9_processor`：回车会上屏原始数字、退格逐字母删，需前端实现语义。
 - rime-ice 不带 opencc s2t 数据，需从 rime-deps 包补。

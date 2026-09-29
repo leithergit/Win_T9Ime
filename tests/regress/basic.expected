@@ -1,0 +1,54 @@
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 凶魂(xiong hun) 雄浑(xiong hun)
+> bar
+  bar: zhong/5 xiong/5 yin/3 xin/3 yi/2 zi/2 xi/2 zh/2 w/1 x/1 y/1 z/1
+> space
+  input=[] preedit=[] commit=[中国]
+> k 744
+  input=[744] preedit=[shi] bar=shi,qi,si,ri,pi,sh,p,q,... cands=是(shi) 时(shi) 事(shi) 实(shi) 十(shi)
+> space
+  input=[] preedit=[] commit=[是]
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 凶魂(xiong hun) 雄浑(xiong hun)
+> pick 1
+  input=[zhong'486] preedit=[zhong'guo] bar=guo,huo,hun,gun,hu,gu,g,h,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 种过(zhong guo) 忠魂(zhong hun)
+> bar
+  bar: guo/3 huo/3 hun/3 gun/3 hu/2 gu/2 g/1 h/1 i/1
+> enter
+  input=[] preedit=[] commit=[zhongguo]
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 凶魂(xiong hun) 雄浑(xiong hun)
+> pick 1
+  input=[zhong'486] preedit=[zhong'guo] bar=guo,huo,hun,gun,hu,gu,g,h,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 种过(zhong guo) 忠魂(zhong hun)
+> bs
+  input=[zhong'48] preedit=[zhong'gu] bar=gu,hu,g,h,i cands=中古(zhong gu) 中蛊(zhong gu) 中胡(zhong hu) 钟鼓(zhong gu) 忠骨(zhong gu)
+> bs
+  input=[zhong'4] preedit=[zhong'g] bar=g,h,i cands=中国(zhong guo) 🇨🇳 中华(zhong hua) 中共(zhong gong) 中和(zhong he)
+> bs
+  input=[zhong'] preedit=[zhong] cands=中(zhong) 🀄 种(zhong) 重(zhong) 终(zhong)
+> bs
+  input=[94664] preedit=[zhong] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中(zhong) 🀄 种(zhong) 重(zhong) 终(zhong)
+> esc
+  input=[] preedit=[]
+> k 94
+  input=[94] preedit=[yi] bar=yi,zi,xi,zh,w,x,y,z cands=一(yi) 1️⃣ 子(zi) 自(zi) 以(yi)
+> k 1
+  input=[94'] preedit=[yi] bar=yi,zi,xi,zh,w,x,y,z cands=一(yi) 1️⃣ 子(zi) 自(zi) 以(yi)
+> k 4486
+  input=[94'4486] preedit=[zh'h'guo] bar=yi,zi,xi,zh,w,x,y,z cands=诸侯国(zhu hou guo) 中华魂(zhong hua hun) 中国姑娘(zhong guo gu niang) 香港行货(xiang gang hang huo) 智慧火(zhi hui huo)
+> esc
+  input=[] preedit=[]
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中国(zhong guo) 🇨🇳 中火(zhong huo) 凶魂(xiong hun) 雄浑(xiong hun)
+> sel 23
+  input=[94664486] preedit=[中huo] cands=或(huo) 过(guo) 国(guo) 果(guo) 活(huo)
+> sel 1
+  input=[] preedit=[] commit=[中或]
+> k 744
+  input=[744] preedit=[shi] bar=shi,qi,si,ri,pi,sh,p,q,... cands=是(shi) 时(shi) 事(shi) 实(shi) 十(shi)
+> sel 8
+  input=[] preedit=[] commit=[使]
+> k 744
+  input=[744] preedit=[shi] bar=shi,qi,si,ri,pi,sh,p,q,... cands=使(shi) 是(shi) 时(shi) 事(shi) 实(shi)
+> esc
+  input=[] preedit=[]

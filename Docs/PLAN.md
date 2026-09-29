@@ -31,7 +31,7 @@
 1. 仓库骨架：CMakeLists、CMakePresets（x64/x86 Release/Debug）、`cmake/` 工具函数、doctest（header-only，放 third_party）、`.gitignore`、CLAUDE.md。
 2. `third_party/fetch_librime.ps1`：下载 librime 1.17.0 msvc-x64/x86 + rime-deps（取 opencc 数据），SHA-256 校验，**保留 mtime 解压**。
 3. `data/fetch_rime_ice.ps1`：固定 rime-ice commit `3aea6d3694fb3d94ec663641f021f788822897ad`，校验哈希。
-4. `data/custom/`：`t9.custom.yaml`（去 t9_processor、启用 melt_eng 英文九键）、`rime_ice.custom.yaml`（去 radical_pinyin 反查）、`default.custom.yaml`（schema_list: rime_ice, t9）。
+4. `data/custom/`：`t9.custom.yaml`（去 t9_processor）、`t9_eng.schema.yaml`（英文九键，独立方案）、`rime_ice.custom.yaml`（去 radical_pinyin 反查）、`default.custom.yaml`（schema_list: rime_ice, t9）。
 5. 构建期预部署：CMake 自定义目标调用 `rime_deployer --build`，产物进 `build/data/build`，保留 mtime。
 6. `tools/gen_syllables`（Python）：从 rime-ice 词典生成 `syllable_table.gen.h`（音节、数字码、频率）。
 7. `src/host/engine/t9/`：`SyllableIndex`（前缀匹配）、`PinyinBar`（候选音节、排序）、`T9Composer`（点选替换、撤销栈、回车/退格语义）、`PreeditFormatter`（comment → 拼音 preedit，UTF-8 字节偏移处理）。不依赖 librime 的部分全部可单测；依赖部分通过 `IRimeSession` 接口注入。

@@ -1,3 +1,6 @@
 .remember/
-build/
 out/
+third_party/librime/
+data/rime-ice/
+__pycache__/
+dist/

@@ -1,0 +1,46 @@
+> schema t9_eng
+  input=[] preedit=[]
+> k 43556
+  input=[43556] preedit=[43556] cands=hello
+> space
+  input=[] preedit=[] commit=[hello]
+> k 9675
+  input=[9675] preedit=[9675] cands=work York world works worked
+> esc
+  input=[] preedit=[]
+> schema rime_ice
+  input=[] preedit=[]
+> k nihao
+  input=[nihao] preedit=[ni hao] cands=你好 👋 拟好 你 尼
+> space
+  input=[] preedit=[] commit=[你好]
+> k zhongguo
+  input=[zhongguo] preedit=[zhong guo] cands=中国 🇨🇳 种过 中过 中果
+> bs
+  input=[zhonggu] preedit=[zhong gu] cands=中古 中蛊 钟鼓 忠骨 中
+> esc
+  input=[] preedit=[]
+> opt traditionalization 1
+  input=[] preedit=[]
+> k zhongguo
+  input=[zhongguo] preedit=[zhong guo] cands=中國 🇨🇳 種過 中過 中果
+> space
+  input=[] preedit=[] commit=[中國]
+> schema t9
+  input=[] preedit=[]
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中國(zhong guo) 🇨🇳 中火(zhong huo) 兇魂(xiong hun) 雄渾(xiong hun)
+> page+
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=種過(zhong guo) 忠魂(zhong hun) 重活(zhong huo) 重貨(zhong huo) 中過(zhong guo)
+> page-
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中國(zhong guo) 🇨🇳 中火(zhong huo) 兇魂(xiong hun) 雄渾(xiong hun)
+> esc
+  input=[] preedit=[]
+> opt traditionalization 0
+  input=[] preedit=[]
+> opt emoji 0
+  input=[] preedit=[]
+> k 94664486
+  input=[94664486] preedit=[zhong'guo] bar=zhong,xiong,yin,xin,yi,zi,xi,zh,... cands=中国(zhong guo) 中火(zhong huo) 凶魂(xiong hun) 雄浑(xiong hun) 种过(zhong guo)
+> esc
+  input=[] preedit=[]

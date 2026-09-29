@@ -126,7 +126,7 @@ Ctl：见 §7。
 ### 5.1 librime
 - 官方 `librime 1.17.0`（`33e7814`）msvc-x64 / msvc-x86 预编译包，脚本下载 + SHA-256 校验。rime.dll 仅导入 KERNEL32/USER32/dbghelp **[实测，x64]**，Win7 可加载性 **[需实测]**（x86 包同样检查）。
 - traits：`shared_data_dir=<安装目录>\data`，`prebuilt_data_dir=<安装目录>\data\build`，`user_data_dir=%APPDATA%\T9Ime\Rime`，`staging_dir=<user>\build`，`log_dir`：Release 为空（不记日志，SPEC §11 隐私），Debug 可选。
-- **预部署数据必须保留 mtime**：否则首次启动重建 prism（8.6 s、写入 11.3 MB）**[实测]**。构建脚本所有复制步骤保 mtime；Inno Setup 默认保留时间戳。
+- **启动不跑 maintenance**（M1 实测）：librime 以 mtime 判断重建，zip 解压（2 秒精度、本地时区）后会重建约 7 s；跳过 maintenance 后直接用 `prebuilt_data_dir` 的数据，启动 <20 ms，学习正常 **[实测]**。用户配置变更（模糊音、简繁默认等）由 Host 显式重新部署；版本升级时清理 `<user>uild`，避免旧 staging 遮蔽新的预部署数据。
 - opencc：从 rime-deps 包补 `s2t.json + STCharacters.ocd2 + STPhrases.ocd2`（简繁切换需要）**[实测]**。
 
 ### 5.2 session 策略
@@ -138,6 +138,7 @@ Ctl：见 §7。
 - `t9.custom.yaml`：从 `engine/processors` 去掉 `t9_processor`（官方 librime 中不存在，缺失只报错不影响功能 **[实测]**）；保留 lua_translator（U3）；Win7 上通过 `set_option("emoji", false)` 关闭 emoji（U11），不改 schema。
 - `rime_ice.custom.yaml`：保留全部 lua；**移除 radical_pinyin 部件拆字反查**（U14，省约 1.4 MB 压缩后）：去掉 `reverse_lookup_filter@radical_reverse_lookup`、`affix_segmentor@radical_lookup`、`lua_filter@*search@radical_pinyin` 及其依赖。
 - 编码为**数字码**（`derive/[abc]/2/`…），SPEC §5 的"大写字母码"已过时 **[实测]**。
+- **英文九键 = 独立方案 `t9_eng`**（`data/custom/t9_eng.schema.yaml`）：主翻译器为 melt_eng 词库，speller 用 xlit 转数字码，单独的 `t9_eng.prism.bin`（0.8 MB），开启 completion。不挂进 t9：非主翻译器的 prism 不会被部署 **[实测]**，且 derive 会使英文 prism 膨胀。`default.custom.yaml` 的 schema_list 为 rime_ice、t9、t9_eng。
 
 ### 5.4 九键前端（`src/host/engine/t9/`，纯 C++，可单测）
 依据 research/t9-frontends-and-wanxiang.md 与 librime-rime-ice.md：

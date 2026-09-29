@@ -1,0 +1,67 @@
+# Rime schema
+# encoding: utf-8
+#
+# T9Ime 英文九键：面板"英"布局使用。
+# 词库复用 rime-ice 的 melt_eng.dict.yaml，编码经 xlit 转为九键数字码，
+# 单独编译为 t9_eng prism，不影响 rime_ice（全拼）下的 melt_eng。
+
+schema:
+  schema_id: t9_eng
+  name: 英文九键
+  version: "1.0.0"
+  author:
+    - T9Ime
+  description: |
+    English T9 input for the T9Ime touch panel (melt_eng words, digit codes).
+  dependencies:
+    - melt_eng
+
+switches:
+  - name: ascii_mode
+    states: [ 九键, Ａ ]
+
+engine:
+  processors:
+    - ascii_composer
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor
+  segmentors:
+    - ascii_segmentor
+    - matcher
+    - abc_segmentor
+    - punct_segmentor
+    - fallback_segmentor
+  translators:
+    - punct_translator
+    - table_translator
+  filters:
+    - uniquifier
+
+speller:
+  alphabet: "23456789"
+  initials: "23456789"
+  delimiter: "'"
+  algebra:
+    - xlit/abcdefghijklmnopqrstuvwxyz/22233344455566677778889999/
+    - xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/22233344455566677778889999/
+
+translator:
+  dictionary: melt_eng
+  prism: t9_eng
+  enable_sentence: false
+  enable_user_dict: false
+  enable_completion: true
+  comment_format:
+    - xform/.*//
+
+# 1 键上的符号序列（与中文九键一致）
+punctuator:
+  import_preset: default
+  half_shape:
+    "1": [1, "@", ".", "/", ":", "_", "-", "#", ",", "?", "!", "'"]
+
+menu:
+  page_size: 5

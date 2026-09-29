@@ -1,0 +1,14 @@
+# T9Ime patch for rime-ice t9 (中文九键).
+# Remove t9_processor: it only exists in Hamster's closed-source librime; the
+# Enter / BackSpace semantics it provided are implemented by the T9Ime front end.
+# English T9 is a separate schema (t9_eng.schema.yaml), not mixed into t9.
+patch:
+  engine/processors:
+    - ascii_composer
+    - recognizer
+    - key_binder
+    - speller
+    - punctuator
+    - selector
+    - navigator
+    - express_editor

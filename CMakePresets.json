@@ -1,0 +1,29 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": { "CMAKE_CXX_COMPILER": "cl" }
+    },
+    { "name": "x64-Debug",   "inherits": "base", "architecture": { "value": "x64", "strategy": "external" }, "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "x64-Release", "inherits": "base", "architecture": { "value": "x64", "strategy": "external" }, "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
+    { "name": "x86-Debug",   "inherits": "base", "architecture": { "value": "x86", "strategy": "external" }, "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "x86-Release", "inherits": "base", "architecture": { "value": "x86", "strategy": "external" }, "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+  ],
+  "buildPresets": [
+    { "name": "x64-Debug",   "configurePreset": "x64-Debug" },
+    { "name": "x64-Release", "configurePreset": "x64-Release" },
+    { "name": "x86-Debug",   "configurePreset": "x86-Debug" },
+    { "name": "x86-Release", "configurePreset": "x86-Release" }
+  ],
+  "testPresets": [
+    { "name": "x64-Debug",   "configurePreset": "x64-Debug",   "output": { "outputOnFailure": true } },
+    { "name": "x64-Release", "configurePreset": "x64-Release", "output": { "outputOnFailure": true } },
+    { "name": "x86-Debug",   "configurePreset": "x86-Debug",   "output": { "outputOnFailure": true } },
+    { "name": "x86-Release", "configurePreset": "x86-Release", "output": { "outputOnFailure": true } }
+  ]
+}
