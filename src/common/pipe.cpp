@@ -124,11 +124,20 @@ bool WriteMessage(HANDLE pipe, const std::vector<uint8_t>& data, DWORD timeout_m
 
 bool PipeClient::Connect(const std::wstring& name, DWORD timeout_ms) {
   Close();
-  for (int attempt = 0; attempt < 2; ++attempt) {
+  const ULONGLONG deadline = GetTickCount64() + timeout_ms;
+  for (int attempt = 0; attempt < 50; ++attempt) {
     pipe_ = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
                         FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
     if (pipe_ != INVALID_HANDLE_VALUE) break;
-    if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(name.c_str(), timeout_ms)) return false;
+    const DWORD err = GetLastError();
+    if (err == ERROR_PIPE_BUSY) {
+      if (!WaitNamedPipeW(name.c_str(), timeout_ms)) return false;
+      continue;
+    }
+    // Not found: no server, or the server is between two instances (it just
+    // accepted another client). Retry briefly within the timeout.
+    if (err != ERROR_FILE_NOT_FOUND || GetTickCount64() + 10 > deadline) return false;
+    Sleep(10);
   }
   if (pipe_ == INVALID_HANDLE_VALUE) return false;
   DWORD mode = PIPE_READMODE_MESSAGE;

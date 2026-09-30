@@ -76,11 +76,13 @@ def main() -> int:
         check(code == 0 and panel.has(pe.TEXT, label='7') and not panel.has(pe.KEY),
               'show number: number layout visible')
         s = status()
-        check(s['visible'] == '1' and s['mode'] == 'number', f'status after show ({s})')
+        check(s['visible'] == '1' and s['mode'] == 'number',
+              f'status after show ({s}, last focus {(panel.read() or {}).get("focus")!r})')
 
         ctl('mode', 'english')
         time.sleep(0.4)
-        check(panel.has(pe.LETTER, label='q') and status()['mode'] == 'english', 'mode english: QWERTY layout')
+        s = status()
+        check(panel.has(pe.LETTER, label='q') and s['mode'] == 'english', f'mode english: QWERTY layout ({s})')
         ctl('mode', 'chinese')
         time.sleep(0.4)
         check(panel.has(pe.KEY, text='2'), 'mode chinese: nine-key layout')

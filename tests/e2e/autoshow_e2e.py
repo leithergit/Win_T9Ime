@@ -171,6 +171,9 @@ def main() -> int:
                 pass
             check(ok, what + f' (last focus: {(panel.read() or {}).get("focus")!r})')
 
+        if not hasattr(user32, 'InjectTouchInput'):  # Windows 7: no touch injection
+            print('SKIP touch: InjectTouchInput unavailable')
+            return
         # The text field already has the focus: no focus change, still pops up.
         shown_by(text, 'touch on the already focused field pops the panel up')
         # Hide with the panel's own key, then touch another field.

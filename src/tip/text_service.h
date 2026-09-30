@@ -48,7 +48,7 @@ class TextService final : public ITfTextInputProcessorEx,
   STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr*) override { return S_OK; }
   STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr*) override { return S_OK; }
   STDMETHODIMP OnSetFocus(ITfDocumentMgr* focus, ITfDocumentMgr* previous) override;
-  STDMETHODIMP OnPushContext(ITfContext*) override { return S_OK; }
+  STDMETHODIMP OnPushContext(ITfContext* context) override;
   STDMETHODIMP OnPopContext(ITfContext*) override { return S_OK; }
 
   // ITfTextLayoutSink
@@ -162,6 +162,7 @@ class TextService final : public ITfTextInputProcessorEx,
   Microsoft::WRL::ComPtr<LangBarButton> lang_bar_;
 
   HWND message_window_ = nullptr;  // message-only, on this thread
+  int reconnect_attempts_ = 0;     // timer-driven reconnects since the connection was lost
   EventListener events_;
   uint32_t events_generation_ = 0;
   TouchTracker touch_;

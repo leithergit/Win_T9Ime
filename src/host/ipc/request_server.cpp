@@ -68,6 +68,10 @@ void EventServer::Serve(HANDLE pipe, uint64_t, HANDLE stop) {
   focus_.ClearEventPipe(client, pipe);
 }
 
+// A focus-out was answered without the engine: clear the session before the
+// next engine request of this connection (each connection has its own thread).
+static thread_local bool t_clear_pending = false;
+
 std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
   std::vector<uint8_t> out;
   const uint32_t seq = req.seq();
@@ -86,24 +90,30 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
                    req.StrOr(kTagText), (flags & kFocusNoContext) != 0, (flags & kFocusActivated) != 0);
     return Writer(MsgType::kAck, seq).Finish();
   }
+  if (req.type() == MsgType::kFocusOut) {
+    // Not behind the engine (warm-up, long lookups): a late answer would make
+    // the TIP drop the connection. The session is cleared with the next
+    // engine request of this connection.
+    focus_.FocusOut(client);
+    t_clear_pending = true;
+    return Writer(MsgType::kAck, seq).Finish();
+  }
   if (req.type() == MsgType::kDiagnostics) {
     Writer w(MsgType::kAck, seq);
     w.Str(kTagText, focus_.Describe() + (diagnostics_ ? diagnostics_() : std::wstring()));
     return w.Finish();
   }
+  const bool clear = t_clear_pending;  // read here: the task runs on the engine thread
+  t_clear_pending = false;
   engine_.Invoke([&](EngineContext& ctx) {
     Session* s = ctx.Client(client);
     if (!s) {
       out = Writer(MsgType::kError, seq).Finish();
       return;
     }
+    if (clear) s->Clear();
     bool eaten = false;
     switch (req.type()) {
-      case MsgType::kFocusOut:
-        s->Clear();
-        focus_.FocusOut(client);
-        out = Writer(MsgType::kAck, seq).Finish();
-        return;
       case MsgType::kKey:
         if (ctx.panel && ctx.panel->HasInput()) {
           ctx.panel->Clear();

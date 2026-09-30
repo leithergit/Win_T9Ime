@@ -24,6 +24,9 @@ constexpr UINT kTouchTapMessage = WM_APP + 2;  // press on the focused window
 constexpr UINT kCandidateSelectMessage = WM_APP + 3;  // wParam = index
 constexpr UINT kCandidatePageMessage = WM_APP + 4;    // wParam = backward
 constexpr UINT kReconnectedMessage = WM_APP + 5;      // new host connection: report the focus again
+constexpr UINT_PTR kReconnectTimer = 1;               // lost connection: reconnect without waiting for input
+constexpr UINT kReconnectMs = 2500;
+constexpr int kReconnectAttempts = 12;
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 // {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
@@ -166,6 +169,13 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
       // A new host (or a dropped connection) knows nothing about our focus.
       // Posted: this runs inside a host call.
       if (host_.generation() > 1) PostMessageW(message_window_, kReconnectedMessage, 0, 0);
+      reconnect_attempts_ = 0;
+      KillTimer(message_window_, kReconnectTimer);
+    });
+    // The host would otherwise not hear from us (focus, panel output) until the
+    // next key or focus change.
+    host_.SetOnDisconnected([this] {
+      if (message_window_) SetTimer(message_window_, kReconnectTimer, kReconnectMs, nullptr);
     });
 
     if (!AdviseSinks()) {
@@ -285,6 +295,22 @@ STDMETHODIMP TextService::OnSetFocus(ITfDocumentMgr* focus, ITfDocumentMgr* prev
     if (focus != previous) Abort();
     AdviseLayoutSink(focus);
     ReportFocus(focus);
+    return S_OK;
+  });
+}
+
+// CUAS (Windows 7) may focus a new document manager before pushing its
+// context: the focus report then said "no context". Report again once the
+// focused document gets its context.
+STDMETHODIMP TextService::OnPushContext(ITfContext* context) {
+  return Guard([&] {
+    ComPtr<ITfDocumentMgr> doc, focus;
+    if (!context || !thread_mgr_ || FAILED(context->GetDocumentMgr(&doc)) || FAILED(thread_mgr_->GetFocus(&focus)) ||
+        !focus || doc.Get() != focus.Get()) {
+      return S_OK;
+    }
+    AdviseLayoutSink(focus.Get());
+    ReportFocus(focus.Get());
     return S_OK;
   });
 }
@@ -631,6 +657,20 @@ void TextService::EnsureEvents() {
 }
 
 LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == WM_TIMER && wp == kReconnectTimer) {
+    KillTimer(hwnd, kReconnectTimer);
+    if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+      Guard([&] {
+        if (self->host_.connected() || ++self->reconnect_attempts_ > kReconnectAttempts) return S_OK;
+        // Reporting the focus connects (and, once connected, reports it again).
+        ComPtr<ITfDocumentMgr> focus;
+        if (self->thread_mgr_ && SUCCEEDED(self->thread_mgr_->GetFocus(&focus))) self->ReportFocus(focus.Get());
+        if (!self->host_.connected()) SetTimer(hwnd, kReconnectTimer, kReconnectMs, nullptr);
+        return S_OK;
+      });
+    }
+    return 0;
+  }
   if (msg == kReconnectedMessage) {
     if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
       Guard([&] {

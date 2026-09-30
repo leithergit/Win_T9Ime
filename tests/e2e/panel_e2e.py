@@ -157,17 +157,22 @@ class Panel:
         except (OSError, ValueError):
             return None
 
-    def find(self, action, *, text=None, label=None, index=None):
-        layout = wait_for(self.read, what='layout')
-        for e in layout['elements']:
-            if e['action'] == action and (text is None or e['text'] == text) and \
-                    (label is None or e['label'] == label) and (index is None or e['index'] == index):
-                return e
-        raise AssertionError(f'element not found: action={action} text={text} label={label} index={index}')
+    def find(self, action, *, text=None, label=None, index=None, timeout=3.0):
+        # Waits a little: on a slow machine the panel may not have relaid out yet.
+        deadline = time.time() + timeout
+        while True:
+            layout = wait_for(self.read, what='layout')
+            for e in layout['elements']:
+                if e['action'] == action and (text is None or e['text'] == text) and \
+                        (label is None or e['label'] == label) and (index is None or e['index'] == index):
+                    return e
+            if time.time() >= deadline:
+                raise AssertionError(f'element not found: action={action} text={text} label={label} index={index}')
+            time.sleep(0.1)
 
     def has(self, action, **kw) -> bool:
         try:
-            self.find(action, **kw)
+            self.find(action, timeout=kw.pop('timeout', 0), **kw)
             return True
         except AssertionError:
             return False
@@ -244,6 +249,10 @@ def main() -> int:
 
         panel.keys('94664486')
         panel.tap(ENTER)
+        try:  # the commit may arrive after the repaint on a slow machine
+            wait_for(lambda: window_text(edit) == '中国是zhongguo', timeout=3, what='enter commit')
+        except AssertionError:
+            pass
         check(window_text(edit) == '中国是zhongguo', f'enter commits pinyin (got {window_text(edit)!r})')
 
         panel.tap(BACKSPACE)

@@ -127,6 +127,7 @@ bool HostClient::Exchange(ipc::Writer& request, std::vector<uint8_t>* response, 
     // starts a new host if nobody listens.
     next_attempt_ = 0;
   }
+  if (!pipe_.connected() && on_disconnected_) on_disconnected_();
   return false;
 }
 

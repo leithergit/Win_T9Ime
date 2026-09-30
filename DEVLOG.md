@@ -201,3 +201,11 @@
 - **IMM32 兼容**（`tests/e2e/imm_e2e.py`，test_target 新增 WM_APP+2/3/4 调 ImmSetOpenStatus / ImmSetConversionStatus / 查询）：Win11 上全部通过——ImmSetConversionStatus 切中英、ImmSetOpenStatus 关闭时按键透传、再打开恢复、T9Ime 自己的 Shift 切换反映到 ImmGetConversionStatus。
 - **ctl e2e**（`tests/e2e/ctl_e2e.py`）：状态、显示数字布局、切布局、位置 / 停靠、隐藏 / 切换、通知（含移动后的新矩形）、对另一进程窗口 activate / deactivate（物理键盘验证）。x64 全部 7 项 e2e 通过。
 - 测试包加入 `T9Ctl.dll`、`t9ctl.exe`、`TestHost*.exe` 与 `sdk\`（`t9ctl.h`、`T9Ctl.cs`）；清单 `Docs/testing/M5-checklist.md`。
+
+## 2026-09-30 — M5 在 Win7 虚拟机上验证；修复四个 Win7 暴露的问题
+
+- 虚拟机结果：ctl、imm、tip、push、autoshow、switch 连续两轮全过；panel 在内存吃紧（主机仅剩约 1.5 GB）的虚拟机里偶发首击超时（重绘等待），属测试时序，已放宽等待。
+- **管道实例空档**：服务端接受一个连接后才创建下一个实例，期间新连接得到 ERROR_FILE_NOT_FOUND 立即失败（`t9ctl status` 连续三次调用在 Win7 上随机失败）。现在先建下一个实例再交接连接；客户端在超时内对"找不到"短暂重试。
+- **CUAS 先聚焦后压入上下文**（Win7）：新文本框第一次获得焦点时 `OnSetFocus` 里取不到上下文，TIP 报告为焦点离开，之后不再补报——触屏上第一次点某个输入框可能弹出错误布局或隐藏面板。现在 `OnPushContext` 对当前焦点文档重新上报。
+- **断线后不自动重连**：Host 预热期间 TIP 连续超时断开，Host 把断开当作焦点离开；TIP 要等下一次按键或焦点变化才重连，其间面板上屏退回 SendInput。现在 TIP 断线后用定时器（2.5 s，最多 12 次）重连并补报焦点；Host 的 FocusOut 不再排在引擎后面（立即应答，会话在该连接下一次引擎请求时清空）。
+- 测试：autoshow 在无 InjectTouchInput（Win7）时跳过整个触摸场景；panel e2e 查找元素时等待重排（最多 3 s），回车上屏等待到达。

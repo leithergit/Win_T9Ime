@@ -63,6 +63,10 @@ void PipeServer::Listen(HANDLE pipe) {
     } else {
       ok = ok || err == ERROR_PIPE_CONNECTED;
     }
+    // The next instance first: a client connecting right after this one must
+    // find a listening instance (otherwise it gets ERROR_FILE_NOT_FOUND).
+    HANDLE next = WaitForSingleObject(stop_, 0) == WAIT_OBJECT_0 ? INVALID_HANDLE_VALUE
+                                                                  : CreatePipeInstance(name_, false);
     if (ok) {
       ReapFinished();
       std::lock_guard lock(mutex_);
@@ -78,8 +82,7 @@ void PipeServer::Listen(HANDLE pipe) {
     } else {
       CloseHandle(pipe);
     }
-    if (WaitForSingleObject(stop_, 0) == WAIT_OBJECT_0) break;
-    pipe = CreatePipeInstance(name_, false);
+    pipe = next;
   }
   CloseHandle(connected);
 }

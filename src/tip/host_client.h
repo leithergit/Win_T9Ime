@@ -29,6 +29,9 @@ class HostClient {
   uint32_t generation() const { return generation_; }
   // Called on the calling (UI) thread right after a new connection is made.
   void SetOnConnected(std::function<void()> f) { on_connected_ = std::move(f); }
+  // Called when a call drops the connection (host gone, or several timeouts).
+  void SetOnDisconnected(std::function<void()> f) { on_disconnected_ = std::move(f); }
+  bool connected() const { return pipe_.connected(); }
 
  private:
   bool EnsureConnected();
@@ -42,6 +45,7 @@ class HostClient {
   uint32_t client_id_ = 0;
   uint32_t generation_ = 0;
   std::function<void()> on_connected_;
+  std::function<void()> on_disconnected_;
 };
 
 }  // namespace t9ime::tip
