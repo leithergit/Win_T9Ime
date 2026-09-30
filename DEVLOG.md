@@ -158,3 +158,10 @@
 - 虚拟机里"点击候选失败"定位：VMware 绝对指针使注入的鼠标点击落不到目标；投递窗口消息后 TIP 处理正常（同步编辑会话 hr=0）。测试在虚拟机中改用消息投递点击。
 - 顺带修复：候选窗点击/滚轮改为 PostMessage 后处理（Win11 上"点候选要到下个按键才上屏"的偶发问题）；Host 启动预热引擎（构建后首轮 e2e 变慢/失败的原因，也是用户冷启动首批按键被放行的原因）；test_target 在 Win7 上切英文键盘失败时退回 ActivateKeyboardLayout。
 - 用户的虚拟机点选 T9 输入法不会弹出面板：符合设计（只在触摸聚焦时弹，或勾选"总是弹出"）；如需"切到 T9 时弹出面板"可加选项，待用户决定。
+
+## 2026-09-30 — Win7 触屏实测通过；密码输入与系统输入面板图标
+
+- 用户 ThinkPad 上的 Win7 虚拟机（触屏 USB 直通）实测 5 步全部符合预期（extra=ff51578a，touch=1）。
+- 反馈 1"点密码框面板消失，无法输密码"：新增**字母面板**（Mode::kLetters）。密码 / 私密 / 字母数字 PIN 输入框自动切到此面板：九宫格按键多击选字母（900 ms 内再点同键换下一个字母），长按输入数字，"大小写"键切换大小写，右列有退格与空格。字母直接用 SendInput 送出，不经引擎，也不进入组合。Win7 的密码 Edit 不走 TSF，TIP 识别 ES_PASSWORD 后以"无上下文"焦点上报，Host 对其只用 SendInput。
+- 反馈 2"点密码框时出现系统输入面板图标"：接管系统触摸键盘时，Win7 另写用户策略 `HKCU\Software\Policies\Microsoft\TabletTip.7` 的 HideIPTIPTouchTarget / HideIPTIPTarget / DisableEdgeTarget（先备份，取消接管时还原），并重启输入面板进程使之生效。托盘开关在所有系统上显示（Win7 显示为"关闭系统输入面板图标"），命令行 `--take-over-touch-keyboard` 也可开启。
+- e2e 回归修复：Host 预热期间 TIP 的请求超时会断开管道，重连后 Host 不知道焦点 → 推送退回 SendInput（push e2e 偶发失败）。现在管道请求带序号，超时不断开（下一次调用跳过迟到的应答，连续 3 次超时才断开）；重连后 TIP 重新上报焦点。Hello/FocusIn 不再排队等引擎。e2e 启动 Host 时确认管道归属（避免其它程序的 TIP 拉起的后台 Host 抢占）；panel e2e 每次重置面板尺寸。连续 6 轮 e2e 中 5 轮全过、1 次 autoshow 偶发失败（单独重跑 3 次均过）。

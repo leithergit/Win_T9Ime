@@ -24,6 +24,7 @@ struct FocusInfo {
   bool read_only = false;
   bool focused = false;
   std::wstring touch_debug;     // what the TIP based `touch` on (diagnostics)
+  bool no_context = false;      // no TSF document (password edit): use SendInput
 };
 
 class FocusRegistry {
@@ -34,7 +35,7 @@ class FocusRegistry {
   void ClearEventPipe(uint64_t client, HANDLE pipe);
 
   void FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only,
-               std::wstring touch_debug = {});
+               std::wstring touch_debug = {}, bool no_context = false);
   void FocusOut(uint64_t client);
 
   // The focused client on the foreground window's thread, if any.

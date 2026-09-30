@@ -14,6 +14,7 @@ namespace {
 HWND g_edit = nullptr;
 HWND g_number = nullptr;
 HWND g_password = nullptr;
+HWND g_password_mirror = nullptr;  // hidden Static with the password text (tests read it)
 WNDPROC g_edit_proc = nullptr;
 
 // The stock multi-line Edit ignores Ctrl+A; handle it so tests can check that
@@ -41,6 +42,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                                  hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
       g_password = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
                                    0, 0, 0, 0, hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
+      g_password_mirror = CreateWindowExW(0, L"STATIC", L"", WS_CHILD, 0, 0, 0, 0, hwnd, reinterpret_cast<HMENU>(4),
+                                          nullptr, nullptr);
       if (HMODULE msctf = LoadLibraryW(L"msctf.dll")) {
         using SetInputScopeFn = HRESULT(WINAPI*)(HWND, int);
         if (auto fn = reinterpret_cast<SetInputScopeFn>(GetProcAddress(msctf, "SetInputScope"))) {
@@ -57,6 +60,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_SETFOCUS:
       SetFocus(g_edit);
+      return 0;
+    case WM_COMMAND:
+      if (LOWORD(wp) == 3 && HIWORD(wp) == EN_CHANGE) {
+        wchar_t text[256] = {};
+        GetWindowTextW(g_password, text, 256);
+        SetWindowTextW(g_password_mirror, text);
+      }
       return 0;
     case WM_CLOSE:
       RestorePrevious();  // still in the foreground: restores the user's input method

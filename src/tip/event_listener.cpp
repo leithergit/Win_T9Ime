@@ -28,7 +28,10 @@ std::deque<std::wstring> EventListener::Take() {
 
 void EventListener::Run(uint32_t client, HWND notify, UINT message) {
   ipc::PipeClient pipe;
-  if (!pipe.Connect(ipc::PipeName(ipc::Endpoint::kEvents), 200)) return;
+  // The host may still be creating its pipes: retry for a few seconds.
+  for (int attempt = 0; !pipe.Connect(ipc::PipeName(ipc::Endpoint::kEvents), 200); ++attempt) {
+    if (attempt >= 15 || WaitForSingleObject(stop_, 200) == WAIT_OBJECT_0) return;
+  }
   // The host never answers kEventHello; from here on it only pushes.
   ipc::Writer hello(ipc::MsgType::kEventHello);
   hello.U32(ipc::kTagClient, client);

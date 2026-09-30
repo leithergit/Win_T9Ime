@@ -25,6 +25,7 @@ except AttributeError:
 
 # panel_layout.h Action values
 KEY, TEXT, BACKSPACE, CLEAR, SPACE, ENTER, SYMBOLS, NUMBERS, TOGGLE, BACK, HIDE, EXPAND, CANDIDATE, PINYIN = range(1, 15)
+SYMBOL_CATEGORY, HANDLE, LETTER, SHIFT = range(15, 19)
 
 INPUT_MOUSE = 0
 MOUSEEVENTF_MOVE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x1, 0x2, 0x4
@@ -123,6 +124,29 @@ def wait_for(pred, timeout=10.0, what='condition'):
     raise AssertionError(f'timeout waiting for {what}')
 
 
+def start_host(host: str, *args, attempts: int = 5):
+    """Starts T9Host and makes sure it is the one serving the IME pipes.
+
+    With T9Ime active in other applications, their TIPs relaunch a background
+    host as soon as the previous one is killed; that host may grab the pipes
+    first. Kill everything and retry until ours owns them."""
+    host = str(Path(host).resolve())
+    diag = str(Path(host).with_name('t9diag.exe'))
+    for _ in range(attempts):
+        subprocess.run(['taskkill', '/im', 'T9Host.exe', '/f'], capture_output=True)
+        time.sleep(0.3)
+        proc = subprocess.Popen([host, *args])
+        for _ in range(30):
+            time.sleep(0.1)
+            out = subprocess.run([diag, '--owner'], capture_output=True, text=True).stdout.strip()
+            if out and out != '0':
+                break
+        if out == str(proc.pid):
+            return proc
+        proc.kill()
+    raise AssertionError('could not start a T9Host that owns the pipes')
+
+
 class Panel:
     def __init__(self, layout_file: Path):
         self.file = layout_file
@@ -187,6 +211,7 @@ def main() -> int:
         click((rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2)  # focus the target
         wait_for(lambda: user32.GetForegroundWindow() == hwnd, what='target foreground')
 
+        (args.work / 'panel.ini').unlink(missing_ok=True)  # default size: earlier runs resized it
         host = subprocess.Popen([args.host, '--no-single-instance', '--show',
                                  '--user', str(args.work / 'user'), '--settings', str(args.work / 'panel.ini'),
                                  '--dump-layout', str(layout_file)])

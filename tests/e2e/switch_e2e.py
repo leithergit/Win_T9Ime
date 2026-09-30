@@ -37,8 +37,8 @@ def main() -> int:
     caps = user32.GetKeyState(0x14) & 1
     if caps:
         te.tap(0x14)
-    host = subprocess.Popen([str(Path(args.host).resolve()), '--show', '--user', str(args.work / 'switch_user'),
-                             '--settings', str(args.work / 'switch_panel.ini'), '--dump-layout', str(layout)])
+    host = pe.start_host(args.host, '--show', '--user', str(args.work / 'switch_user'),
+                             '--settings', str(args.work / 'switch_panel.ini'), '--dump-layout', str(layout))
     target = subprocess.Popen([str(Path(args.target).resolve()), '--activate-english'])
     failures = []
 

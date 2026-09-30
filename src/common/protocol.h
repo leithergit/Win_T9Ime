@@ -80,6 +80,8 @@ enum Tag : uint16_t {
 // Hello flags
 constexpr uint32_t kFlagAppContainer = 1;
 constexpr uint32_t kFlagElevated = 2;
+// FocusIn flags
+constexpr uint32_t kFocusNoContext = 4;  // focused field has no TSF document (IMM disabled): no pushes
 
 class Writer {
  public:

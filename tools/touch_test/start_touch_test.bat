@@ -41,8 +41,10 @@ if exist "%SystemRoot%\SysWOW64\regsvr32.exe" (
 )
 
 echo [4/5] Resetting panel settings (touch pop-up on, "always" off) and starting T9Host...
+rem --take-over-touch-keyboard: hides the Windows Input Panel icon next to text
+rem boxes and its screen-edge tab (undo: tray icon menu, uncheck the item).
 if exist "%APPDATA%\T9Ime\panel.ini" del "%APPDATA%\T9Ime\panel.ini"
-start "" "!DST!\!ARCH!\T9Host.exe"
+start "" "!DST!\!ARCH!\T9Host.exe" --take-over-touch-keyboard
 "!DST!\!ARCH!\t9diag.exe" > "%RES%\diag_before.txt" 2>&1
 
 echo [5/5] Recording for 5 minutes (results\watch.txt) and opening the test window...
@@ -52,7 +54,11 @@ echo.
 echo Now use your FINGER:
 echo   1. tap the big text box      - the nine-key panel should pop up
 echo   2. tap the middle number box - the panel should switch to digits
-echo   3. tap the bottom password box - the panel should hide
+echo   3. tap the bottom password box - the panel shows letter keys (abc, def ...)
+echo      tap "abc" twice quickly = b, "def" once = d, the case key (right column,
+echo      middle) then "abc" = A,
+echo      hold a key = its digit. The password box should show 3 dots, and the
+echo      Windows Input Panel icon must NOT appear next to the box.
 echo   4. tap the big text box again, type 94664486 on the panel and tap the first candidate
 echo   5. tap the desktop           - the panel should hide
 echo Then write down what happened for each step. Recording stops after 5 minutes.

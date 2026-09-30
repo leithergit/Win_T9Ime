@@ -115,11 +115,18 @@ void HostClient::MaybeStartHost() {
 bool HostClient::Exchange(ipc::Writer& request, std::vector<uint8_t>* response, DWORD timeout_ms) {
   if (!EnsureConnected()) return false;
   if (pipe_.Call(request.Finish(), response, timeout_ms)) return true;
-  // Timed out or broken: stay away for a moment so a hung host does not delay
-  // every key by the full timeout. A broken pipe usually means the host died:
-  // try to start it (rate limited; the host itself is single instance).
-  next_attempt_ = GetTickCount64() + 2000;
-  MaybeStartHost();
+  if (pipe_.connected()) {
+    // Host alive but slow (busy, warming up): the connection is kept (the
+    // late answer is skipped by the next call); keys pass through meanwhile.
+  } else if (pipe_.last_failure_timed_out()) {
+    // Several timeouts in a row: stay away for a moment so a stuck host does
+    // not delay every key by the full timeout. Do not start another one.
+    next_attempt_ = GetTickCount64() + 2000;
+  } else {
+    // Broken pipe: the host is gone. Reconnect right away; EnsureConnected
+    // starts a new host if nobody listens.
+    next_attempt_ = 0;
+  }
   return false;
 }
 

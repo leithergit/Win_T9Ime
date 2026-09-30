@@ -25,7 +25,9 @@ struct RectF {
   float Bottom() const { return y + h; }
 };
 
-enum class Mode { kChinese, kEnglish, kNumber, kSymbol };
+// kLetters: multi-tap letters typed straight into the field (passwords and
+// other fields where Chinese composition or word prediction do not apply).
+enum class Mode { kChinese, kEnglish, kNumber, kSymbol, kLetters };
 
 enum class Action {
   kNone,
@@ -45,6 +47,8 @@ enum class Action {
   kPinyin,        // `index` into the pinyin bar
   kSymbolCategory,  // `index` into the symbol categories
   kHandle,        // drag the window
+  kLetter,        // multi-tap letter key, `text` is the digit '1'..'9'
+  kShift,         // letters mode: upper / lower case
 };
 
 // Scrollable regions; list items are clipped to their region.
@@ -74,6 +78,7 @@ struct LayoutInput {
   Mode mode = Mode::kChinese;
   bool composing = false;
   bool expanded = false;
+  bool shift = false;  // letters mode: upper case
   std::wstring preedit;
   std::vector<std::wstring> candidates;  // whole list fetched so far
   int highlighted = 0;

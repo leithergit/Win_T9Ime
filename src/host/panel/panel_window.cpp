@@ -19,6 +19,7 @@ constexpr UINT_PTR kLongPressTimer = 1;
 constexpr UINT_PTR kRepeatTimer = 2;
 constexpr UINT_PTR kAutoHideTimer = 3;
 constexpr UINT kAutoHideMs = 300;  // focus may just be moving to another field
+constexpr ULONGLONG kMultiTapMs = 900;  // same key within this time: next letter
 constexpr UINT kLongPressMs = 450;
 constexpr UINT kRepeatMs = 70;
 constexpr float kScrollSlop = 8;    // DIPs before a press on a list turns into scrolling
@@ -371,7 +372,8 @@ void PanelWindow::PointerDown(UINT32 id, POINT screen) {
   t.resizing = t.action == Action::kHandle && x >= layout_.handle.Right() - Metrics::kResizeGrip;
   tracks_[id] = t;
   if (on_interaction_ && t.action != Action::kHandle) on_interaction_();
-  if (t.action == Action::kBackspace || t.action == Action::kKey || t.action == Action::kSpace) {
+  if (t.action == Action::kBackspace || t.action == Action::kKey || t.action == Action::kSpace ||
+      t.action == Action::kLetter) {
     long_press_id_ = id;
     SetTimer(hwnd_, kLongPressTimer, kLongPressMs, nullptr);
   }
@@ -481,6 +483,10 @@ void PanelWindow::LongPress(Track& t) {
       Execute(Action::kBackspace, -1, {}, {});
       SetTimer(hwnd_, kRepeatTimer, kRepeatMs, nullptr);
       break;
+    case Action::kLetter:
+      Output(Utf8ToWide(t.text));  // long press: the digit
+      multitap_ = {};
+      break;
     case Action::kKey:
     case Action::kSpace: {
       // Long press types the digit itself (only outside a composition).
@@ -498,8 +504,34 @@ void PanelWindow::LongPress(Track& t) {
 // ---------------------------------------------------------------------------
 // Actions
 
+// Multi-tap: a quick repeat of the same key replaces the letter just typed with
+// the next one on the key (BackSpace + letter); letters go straight to the field.
+void PanelWindow::TypeLetter(char key) {
+  static constexpr const wchar_t* kKeyChars[9] = {L".,?!@-_'", L"abc", L"def", L"ghi", L"jkl",
+                                                  L"mno", L"pqrs", L"tuv", L"wxyz"};
+  if (key < '1' || key > '9') return;
+  const std::wstring chars = kKeyChars[key - '1'];
+  const ULONGLONG now = GetTickCount64();
+  const bool repeat = multitap_.key == key && now - multitap_.tick < kMultiTapMs;
+  multitap_.index = repeat ? (multitap_.index + 1) % chars.size() : 0;
+  multitap_.key = key;
+  multitap_.tick = now;
+  wchar_t c = chars[multitap_.index];
+  if (shift_) c = static_cast<wchar_t>(towupper(c));
+  if (repeat) SendVirtualKey(VK_BACK);
+  Output(std::wstring(1, c));
+}
+
 void PanelWindow::Execute(Action action, int index, const std::string& text, const std::wstring& label) {
+  if (action != Action::kLetter) multitap_ = {};
   switch (action) {
+    case Action::kLetter:
+      TypeLetter(text.empty() ? 0 : text[0]);
+      break;
+    case Action::kShift:
+      shift_ = !shift_;
+      Relayout();
+      break;
     case Action::kKey: {
       const char key = text.empty() ? 0 : text[0];
       const bool english = mode_ == Mode::kEnglish;
@@ -514,12 +546,22 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
       break;
     }
     case Action::kText:
+      if (mode_ == Mode::kLetters || mode_ == Mode::kNumber || mode_ == Mode::kSymbol) {
+        if (!composing()) {  // nothing pending in the engine: type directly, in order
+          Output(label);
+          break;
+        }
+      }
       engine_.Post([label](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Space();  // commit the composition first
         out.push_back({0, label});
       });
       break;
     case Action::kBackspace:
+      if (mode_ == Mode::kLetters && !composing()) {
+        SendVirtualKey(VK_BACK);
+        break;
+      }
       engine_.Post([](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Backspace(); else out.push_back({VK_BACK, {}});
       });
@@ -528,6 +570,10 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
       engine_.Post([](Session& s, std::vector<Passthrough>&) { s.Escape(); });
       break;
     case Action::kSpace: {
+      if (mode_ == Mode::kLetters && !composing()) {
+        Output(L" ");
+        break;
+      }
       const bool english = mode_ == Mode::kEnglish;
       engine_.Post([english](Session& s, std::vector<Passthrough>& out) {
         if (!s.HasInput()) {
@@ -551,7 +597,7 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
       SetMode(Mode::kNumber);
       break;
     case Action::kBack:
-      SetMode(text_mode_);
+      SetMode(mode_ == Mode::kLetters ? text_mode_ : return_mode_);
       break;
     case Action::kToggleLanguage:
       SetMode(mode_ == Mode::kChinese ? Mode::kEnglish : Mode::kChinese);
@@ -584,7 +630,11 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
 void PanelWindow::SetMode(Mode mode) {
   if (mode == mode_) return;
   const Mode old = mode_;
+  if ((mode == Mode::kNumber || mode == Mode::kSymbol) && old != Mode::kNumber && old != Mode::kSymbol) {
+    return_mode_ = old;
+  }
   mode_ = mode;
+  multitap_ = {};
   expanded_ = false;
   side_scroll_ = grid_scroll_ = candidate_scroll_ = 0;
   if (mode == Mode::kChinese || mode == Mode::kEnglish) {
@@ -654,6 +704,8 @@ std::vector<std::wstring> PanelWindow::SideItems() const {
       return kNumberSymbols;
     case Mode::kSymbol:
       return kSymbolCategories;
+    case Mode::kLetters:
+      return kEnglishPunct;
   }
   return {};
 }
@@ -669,6 +721,7 @@ void PanelWindow::Relayout() {
   in.mode = mode_;
   in.composing = composing();
   in.expanded = expanded_;
+  in.shift = shift_;
   in.preedit = Utf8ToWide(snapshot_.state.preedit);
   const auto& list = snapshot_.candidates.empty() ? snapshot_.state.page : snapshot_.candidates;
   for (const Candidate& c : list) in.candidates.push_back(Utf8ToWide(c.text));

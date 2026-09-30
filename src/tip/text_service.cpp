@@ -23,6 +23,7 @@ constexpr UINT kTouchTapMessage = WM_APP + 2;  // press on the focused window
 // mouse message may be deferred (CUAS on Windows 7: until the next key).
 constexpr UINT kCandidateSelectMessage = WM_APP + 3;  // wParam = index
 constexpr UINT kCandidatePageMessage = WM_APP + 4;    // wParam = backward
+constexpr UINT kReconnectedMessage = WM_APP + 5;      // new host connection: report the focus again
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 // {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
@@ -160,7 +161,12 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     message_window_ = CreateWindowExW(0, kMessageClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_module, nullptr);
     if (message_window_) SetWindowLongPtrW(message_window_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     touch_.Install(message_window_, kTouchTapMessage);
-    host_.SetOnConnected([this] { EnsureEvents(); });
+    host_.SetOnConnected([this] {
+      EnsureEvents();
+      // A new host (or a dropped connection) knows nothing about our focus.
+      // Posted: this runs inside a host call.
+      if (host_.generation() > 1) PostMessageW(message_window_, kReconnectedMessage, 0, 0);
+    });
 
     if (!AdviseSinks()) {
       Deactivate();
@@ -535,12 +541,27 @@ ITfContext* TextService::FocusedContext(ComPtr<ITfContext>* holder) {
   return holder->Get();
 }
 
+// Password edit controls: the system disables IMM/TSF in them, so the focus
+// arrives here without a document. They still need the (letters) panel.
+static bool IsPasswordEdit(HWND hwnd) {
+  if (!hwnd) return false;
+  wchar_t cls[64] = {};
+  GetClassNameW(hwnd, cls, 64);
+  if (lstrcmpiW(cls, L"Edit") != 0 && !wcsstr(cls, L"RichEdit") && !wcsstr(cls, L"RICHEDIT")) return false;
+  return (GetWindowLongW(hwnd, GWL_STYLE) & ES_PASSWORD) != 0;
+}
+
 // Tells the host which field of this thread has the focus (nullptr: none), so
 // panel output can be pushed here. Also (re)attaches the events pipe.
 void TextService::ReportFocus(ITfDocumentMgr* doc) {
   ComPtr<ITfContext> top;
   if (!doc || FAILED(doc->GetTop(&top)) || !top) {
     focus_scopes_.clear();
+    HWND focus = GetFocus();
+    if (IsPasswordEdit(focus)) {
+      SendFocusIn(focus, {IS_PASSWORD}, touch_.FocusFromTouch(), false, touch_.Describe(), true);
+      return;
+    }
     host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
     EnsureEvents();
     return;
@@ -579,13 +600,14 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
 }
 
 void TextService::SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only,
-                              const std::wstring& touch_debug) {
+                              const std::wstring& touch_debug, bool no_context) {
   ipc::Writer req(ipc::MsgType::kFocusIn);
   req.U32(ipc::kTagTid, GetCurrentThreadId());
   req.U32(ipc::kTagHwnd, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd)));
   for (uint32_t s : scopes) req.U32(ipc::kTagInputScope, s);
   req.Bool(ipc::kTagTouch, touch).Bool(ipc::kTagReadOnly, read_only);
   if (!touch_debug.empty()) req.Str(ipc::kTagText, touch_debug);
+  if (no_context) req.U32(ipc::kTagFlags, ipc::kFocusNoContext);
   host_.Notify(std::move(req), HostClient::kKeyTimeoutMs);
   EnsureEvents();
 }
@@ -606,6 +628,16 @@ void TextService::EnsureEvents() {
 }
 
 LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == kReconnectedMessage) {
+    if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+      Guard([&] {
+        ComPtr<ITfDocumentMgr> focus;
+        if (self->thread_mgr_ && SUCCEEDED(self->thread_mgr_->GetFocus(&focus)) && focus) self->ReportFocus(focus.Get());
+        return S_OK;
+      });
+    }
+    return 0;
+  }
   if (msg == kCandidateSelectMessage || msg == kCandidatePageMessage) {
     if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
       Guard([&] {

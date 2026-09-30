@@ -2,6 +2,9 @@
 
 #include <msctf.h>
 
+#include <iterator>
+#include <string>
+
 #include "win_compat.h"
 
 namespace t9ime {
@@ -30,6 +33,10 @@ constexpr wchar_t kBackupKey[] = L"Software\\T9Ime\\TouchKeyboardBackup";
 // Windows 11: "Show the touch keyboard" (0 never, 1 when no keyboard, 2 always).
 // Windows 10: show automatically in desktop mode without a keyboard.
 constexpr const wchar_t* kTabTipValues[] = {L"TouchKeyboardTapInvoke", L"EnableDesktopModeAutoInvoke"};
+// Windows 7 Tablet PC Input Panel (user policies): no icon next to text boxes
+// for touch / pen, no tab at the screen edge.
+constexpr wchar_t kTipPolicyKey[] = L"Software\\Policies\\Microsoft\\TabletTip\\1.7";
+constexpr const wchar_t* kTipPolicyValues[] = {L"HideIPTIPTouchTarget", L"HideIPTIPTarget", L"DisableEdgeTarget"};
 constexpr DWORD kMissing = 0xFFFFFFFF;  // backup marker: the value did not exist
 
 }  // namespace
@@ -83,8 +90,69 @@ bool IsTakenOver() {
   return true;
 }
 
+namespace {
+
+// Backs up `names` of `key_path` into the backup key (prefix `tag`) and sets them to `value`.
+void BackupAndSet(const wchar_t* key_path, const wchar_t* const* names, size_t count, DWORD value, HKEY backup,
+                  const std::wstring& tag) {
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, key_path, 0, nullptr, 0, KEY_READ | KEY_WRITE, nullptr, &key, nullptr) !=
+      ERROR_SUCCESS) {
+    return;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    DWORD old = kMissing, size = sizeof(old);
+    if (RegGetValueW(key, nullptr, names[i], RRF_RT_REG_DWORD, nullptr, &old, &size) != ERROR_SUCCESS) old = kMissing;
+    const std::wstring backup_name = tag + names[i];
+    RegSetValueExW(backup, backup_name.c_str(), 0, REG_DWORD, reinterpret_cast<const BYTE*>(&old), sizeof(old));
+    RegSetValueExW(key, names[i], 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+  }
+  RegCloseKey(key);
+}
+
+void RestoreValues(const wchar_t* key_path, const wchar_t* const* names, size_t count, HKEY backup,
+                   const std::wstring& tag) {
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, key_path, 0, KEY_WRITE, &key) != ERROR_SUCCESS) return;
+  for (size_t i = 0; i < count; ++i) {
+    DWORD old = kMissing, size = sizeof(old);
+    const std::wstring backup_name = tag + names[i];
+    if (RegGetValueW(backup, nullptr, backup_name.c_str(), RRF_RT_REG_DWORD, nullptr, &old, &size) != ERROR_SUCCESS) {
+      continue;
+    }
+    if (old == kMissing) {
+      RegDeleteValueW(key, names[i]);
+    } else {
+      RegSetValueExW(key, names[i], 0, REG_DWORD, reinterpret_cast<const BYTE*>(&old), sizeof(old));
+    }
+  }
+  RegCloseKey(key);
+}
+
+// The Input Panel process reads its settings at start: restart it (it comes
+// back on demand).
+void RestartInputPanel() {
+  HWND tip = FindWindowW(L"IPTip_Main_Window", nullptr);
+  if (!tip) return;
+  DWORD pid = 0;
+  GetWindowThreadProcessId(tip, &pid);
+  if (HANDLE p = OpenProcess(PROCESS_TERMINATE, FALSE, pid)) {
+    TerminateProcess(p, 0);
+    CloseHandle(p);
+  }
+}
+
+}  // namespace
+
 void TakeOver() {
   if (IsTakenOver()) return;
+  HKEY policy_backup = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kBackupKey, 0, nullptr, 0, KEY_WRITE, nullptr, &policy_backup, nullptr) ==
+      ERROR_SUCCESS) {
+    BackupAndSet(kTipPolicyKey, kTipPolicyValues, std::size(kTipPolicyValues), 1, policy_backup, L"policy.");
+    RegCloseKey(policy_backup);
+  }
+  RestartInputPanel();
   HKEY tabtip = nullptr, backup = nullptr;
   if (RegCreateKeyExW(HKEY_CURRENT_USER, kTabTipKey, 0, nullptr, 0, KEY_READ | KEY_WRITE, nullptr, &tabtip, nullptr) !=
       ERROR_SUCCESS) {
@@ -109,6 +177,8 @@ void TakeOver() {
 void Restore() {
   HKEY backup = nullptr, tabtip = nullptr;
   if (RegOpenKeyExW(HKEY_CURRENT_USER, kBackupKey, 0, KEY_READ, &backup) != ERROR_SUCCESS) return;
+  RestoreValues(kTipPolicyKey, kTipPolicyValues, std::size(kTipPolicyValues), backup, L"policy.");
+  RestartInputPanel();
   if (RegOpenKeyExW(HKEY_CURRENT_USER, kTabTipKey, 0, KEY_WRITE, &tabtip) == ERROR_SUCCESS) {
     for (const wchar_t* name : kTabTipValues) {
       DWORD value = kMissing, size = sizeof(value);

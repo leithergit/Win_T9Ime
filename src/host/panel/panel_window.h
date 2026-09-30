@@ -130,7 +130,15 @@ class PanelWindow {
 
   EngineSnapshot snapshot_;
   Mode mode_ = Mode::kChinese;
-  Mode text_mode_ = Mode::kChinese;  // mode to return to from numbers / symbols
+  Mode text_mode_ = Mode::kChinese;  // Chinese / English: the text mode for ordinary fields
+  Mode return_mode_ = Mode::kChinese; // mode to return to from numbers / symbols
+  bool shift_ = false;               // letters mode: upper case
+  struct MultiTap {
+    char key = 0;
+    ULONGLONG tick = 0;
+    size_t index = 0;
+  } multitap_;
+  void TypeLetter(char key);
   bool expanded_ = false;
   int symbol_category_ = 0;
   float candidate_scroll_ = 0, side_scroll_ = 0, grid_scroll_ = 0;

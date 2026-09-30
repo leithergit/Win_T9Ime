@@ -41,7 +41,9 @@ TEST_CASE("auto show: InputScope picks the layout") {
   CHECK(DecideOnFocus(In(true, {1}), s, Mode::kChinese, true).mode == Mode::kEnglish);       // IS_URL
   CHECK(DecideOnFocus(In(true, {5}), s, Mode::kChinese, true).mode == Mode::kEnglish);       // e-mail
   CHECK(DecideOnFocus(In(true, {0}), s, Mode::kEnglish, true).mode == Mode::kEnglish);       // default: text mode
-  CHECK(DecideOnFocus(In(true, {31}), s, Mode::kChinese, true).action == AutoAction::kHide);  // IS_PASSWORD
+  const AutoDecision pw = DecideOnFocus(In(true, {31}), s, Mode::kChinese, true);  // IS_PASSWORD
+  CHECK(pw.action == AutoAction::kShow);
+  CHECK(pw.mode == Mode::kLetters);
   CHECK(DecideOnFocus(In(true, {63}), s, Mode::kChinese, true).mode == Mode::kNumber);       // numeric password
 }
 

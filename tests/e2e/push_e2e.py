@@ -38,8 +38,8 @@ def main() -> int:
     caps = user32.GetKeyState(0x14) & 1
     if caps:
         te.tap(0x14)
-    host = subprocess.Popen([str(Path(args.host).resolve()), '--show', '--user', str(args.work / 'push_user'),
-                             '--settings', str(args.work / 'push_panel.ini'), '--dump-layout', str(layout)])
+    host = pe.start_host(args.host, '--show', '--user', str(args.work / 'push_user'),
+                             '--settings', str(args.work / 'push_panel.ini'), '--dump-layout', str(layout))
     target = subprocess.Popen([str(Path(args.target).resolve()), '--activate-tip'])
     failures = []
 
@@ -69,6 +69,9 @@ def main() -> int:
         d = panel.read()
         check(pe.window_text(edit) == '中国', f'panel commit reaches the app (got {pe.window_text(edit)!r})')
         check(d['pushed'] >= 1 and d['sent'] == 0, f'delivered through the TIP (pushed={d["pushed"]}, sent={d["sent"]})')
+        if d['pushed'] == 0:
+            diag = Path(args.host).resolve().with_name('t9diag.exe')
+            print(subprocess.run([str(diag), '--watch', '1'], capture_output=True).stdout.decode('utf-8', 'replace'))
         check(user32.GetForegroundWindow() == hwnd, 'target keeps the foreground')
 
         # Physical composition, then a panel commit: the panel text replaces it.

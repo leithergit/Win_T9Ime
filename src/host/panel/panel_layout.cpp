@@ -11,6 +11,8 @@ constexpr const wchar_t* kChineseKeys[9] = {L"分词", L"ABC", L"DEF", L"GHI", L
                                             L"MNO", L"PQRS", L"TUV", L"WXYZ"};
 constexpr const wchar_t* kEnglishKeys[9] = {L".,?!", L"abc", L"def", L"ghi", L"jkl",
                                             L"mno", L"pqrs", L"tuv", L"wxyz"};
+constexpr const wchar_t* kUpperKeys[9] = {L".,?!", L"ABC", L"DEF", L"GHI", L"JKL",
+                                          L"MNO", L"PQRS", L"TUV", L"WXYZ"};
 
 RectF Inset(RectF r, float d) { return {r.x + d, r.y + d, r.w - 2 * d, r.h - 2 * d}; }
 
@@ -151,6 +153,15 @@ Layout BuildLayout(const LayoutInput& in) {
     add(Action::kBackspace, g.Cell(4, 0), L"⌫", {}, {}, true);
     add(Action::kSpace, g.Cell(4, 1), L"空格", {}, {}, true);
     add(Action::kText, g.Cell(4, 2), L"@", {}, "@", true);
+  } else if (in.mode == Mode::kLetters) {
+    for (int k = 0; k < 9; ++k) {
+      const std::wstring digit(1, static_cast<wchar_t>(L'1' + k));
+      add(Action::kLetter, g.Cell(1 + k % 3, k / 3), in.shift ? kUpperKeys[k] : kEnglishKeys[k], digit, Utf8(digit));
+    }
+    add(Action::kBackspace, g.Cell(4, 0), L"\u232B", {}, {}, true);
+    Element& shift = add(Action::kShift, g.Cell(4, 1), in.shift ? L"ABC" : L"abc", L"大小写", {}, true);
+    shift.selected = in.shift;
+    add(Action::kSpace, g.Cell(4, 2), L"空格", L"0", "0", true);
   } else {  // nine-key Chinese / English
     const bool chinese = in.mode == Mode::kChinese;
     for (int k = 0; k < 9; ++k) {
@@ -169,6 +180,11 @@ Layout BuildLayout(const LayoutInput& in) {
     add(Action::kText, g.Cell(1, 3), L".", {}, ".");
     add(Action::kText, g.Cell(2, 3), L"0", {}, "0");
     add(Action::kText, g.Cell(3, 3), L",", {}, ",");
+  } else if (in.mode == Mode::kLetters) {
+    add(Action::kSymbols, g.Cell(0, 3), L"符号", {}, {}, true);
+    add(Action::kNumbers, g.Cell(1, 3), L"123", {}, {}, true);
+    add(Action::kBack, g.Cell(2, 3), L"中/英", {}, {}, true);
+    add(Action::kHide, g.Cell(3, 3), L"\u2328\u25BE", {}, {}, true);
   } else if (in.mode == Mode::kSymbol) {
     add(Action::kBack, g.Cell(0, 3), L"返回", {}, {}, true);
     add(Action::kNumbers, g.Cell(1, 3), L"123", {}, {}, true);

@@ -109,7 +109,7 @@ class TextService final : public ITfTextInputProcessorEx,
   void OnPushes();
   void ReportFocus(ITfDocumentMgr* doc);
   void SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only,
-                   const std::wstring& touch_debug = {});
+                   const std::wstring& touch_debug = {}, bool no_context = false);
   bool PassThroughScope() const;
   ITfContext* FocusedContext(Microsoft::WRL::ComPtr<ITfContext>* holder);
 

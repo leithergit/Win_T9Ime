@@ -102,3 +102,20 @@ TEST_CASE("number and symbol layouts") {
   REQUIRE(q);
   CHECK(q->region == Region::kGrid);
 }
+
+TEST_CASE("letters layout for passwords") {
+  LayoutInput in;
+  in.measure = Measure;
+  in.mode = Mode::kLetters;
+  Layout l = BuildLayout(in);
+  const Element* two = Find(l, Action::kLetter, L"abc");
+  REQUIRE(two);
+  CHECK(two->text == "2");
+  CHECK(Find(l, Action::kKey) == nullptr);
+  CHECK(Find(l, Action::kShift) != nullptr);
+  CHECK(Find(l, Action::kBack) != nullptr);
+  in.shift = true;
+  Layout upper = BuildLayout(in);
+  CHECK(Find(upper, Action::kLetter, L"ABC") != nullptr);
+  CHECK(Find(upper, Action::kShift)->selected);
+}

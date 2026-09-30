@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <thread>
 
 #include "engine_thread.h"
 #include "pipe.h"
@@ -193,7 +194,39 @@ TEST_CASE("pipe client times out instead of blocking") {
   CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 150));  // server never answers
   const ULONGLONG spent = GetTickCount64() - start;
   CHECK(spent < 1000);
-  CHECK_FALSE(c.connected());
+  CHECK(c.last_failure_timed_out());
+  CHECK(c.connected());  // a slow server keeps the connection
+  CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 50));
+  CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 50));
+  CHECK_FALSE(c.connected());  // closed after three timeouts in a row
   CloseHandle(server);
   CHECK_FALSE(c.Connect(L"\\\\.\\pipe\\T9Ime.test.nobody", 100));
+}
+
+TEST_CASE("pipe client skips late answers to timed-out calls") {
+  const std::wstring name = L"\\\\.\\pipe\\T9Ime.test.late." + std::to_wstring(GetCurrentProcessId());
+  HANDLE server = CreatePipeInstance(name, true);
+  REQUIRE(server != INVALID_HANDLE_VALUE);
+  PipeClient c;
+  REQUIRE(c.Connect(name, 1000));
+  OVERLAPPED ov = {};
+  ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  ConnectNamedPipe(server, &ov);
+  CloseHandle(ov.hEvent);
+  std::vector<uint8_t> resp, req;
+  CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 50));
+  REQUIRE(ReadMessage(server, &req, 1000));
+  const uint32_t first = Reader(req.data(), req.size()).seq();
+  REQUIRE(WriteMessage(server, Writer(MsgType::kError, first).Finish(), 1000));  // late
+  // The next call is answered after the stale response.
+  std::thread answer([&] {
+    std::vector<uint8_t> r;
+    if (ReadMessage(server, &r, 2000)) WriteMessage(server, Writer(MsgType::kAck, Reader(r.data(), r.size()).seq()).Finish(), 1000);
+  });
+  CHECK(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 2000));
+  answer.join();
+  CHECK(Reader(resp.data(), resp.size()).type() == MsgType::kAck);
+  CHECK(Reader(resp.data(), resp.size()).seq() != first);
+  c.Close();
+  CloseHandle(server);
 }

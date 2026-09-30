@@ -90,11 +90,11 @@ def main() -> int:
         ini.unlink(missing_ok=True)
         subprocess.run(['taskkill', '/im', 'T9Host.exe', '/f'], capture_output=True)
         time.sleep(0.5)
-        cmd = [str(Path(args.host).resolve()), '--user', str(args.work / 'auto_user'), '--settings', str(ini),
+        cmd = ['--user', str(args.work / 'auto_user'), '--settings', str(ini),
                '--dump-layout', str(layout)]
         if always:
             cmd.append('--always-show')
-        host = subprocess.Popen(cmd)
+        host = pe.start_host(args.host, *cmd)
         target = subprocess.Popen([str(Path(args.target).resolve()), '--activate-tip'])
         try:
             panel = pe.Panel(layout)
@@ -137,14 +137,22 @@ def main() -> int:
               f'IS_NUMBER field: number layout (focus {(panel.read() or {}).get("focus")!r})')
         pe.click(*center(password))
         time.sleep(1.0)
-        check(not visible(panel), 'password field: panel hidden')
+        check(visible(panel) and has(panel, pe.LETTER, 'abc'), 'password field: letters layout')
+        # Multi-tap: "abc" twice quickly = b, "def" once = d, shift + "abc" = A.
+        panel.tap(pe.LETTER, label='abc')
+        panel.tap(pe.LETTER, label='abc')
+        time.sleep(1.0)  # multi-tap window over
+        panel.tap(pe.LETTER, label='def')
+        time.sleep(1.0)
+        panel.tap(pe.SHIFT)
+        panel.tap(pe.LETTER, label='ABC')
+        time.sleep(0.3)
+        mirror = user32.GetDlgItem(hwnd, 4)
+        check(pe.window_text(mirror) == 'bdA', f'multi-tap letters typed into the password (got {pe.window_text(mirror)!r})')
+        panel.tap(pe.SHIFT)
         pe.click(*center(text))
-        try:
-            pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown again')
-        except AssertionError:
-            print('  diag:', (panel.read() or {}).get('focus'))
-            raise
-        check(has(panel, pe.KEY, '分词'), 'back to the text layout')
+        time.sleep(1.0)
+        check(visible(panel) and has(panel, pe.KEY, '分词'), 'back to the text layout')
 
     def touch_scenario(panel, hwnd, edits):
         text = edits[0]
@@ -166,8 +174,8 @@ def main() -> int:
 
         # The text field already has the focus: no focus change, still pops up.
         shown_by(text, 'touch on the already focused field pops the panel up')
-        # Hide via a mouse click elsewhere (password field), then touch a new field.
-        pe.click(*center(edits[2]))
+        # Hide with the panel's own key, then touch another field.
+        panel.tap(pe.HIDE)
         pe.wait_for(lambda: not visible(panel), timeout=5, what='panel hidden')
         shown_by(edits[1], 'touch focus on another field pops the panel up')
 

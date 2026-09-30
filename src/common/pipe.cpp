@@ -86,7 +86,10 @@ HANDLE CreatePipeInstance(const std::wstring& name, bool first) {
   return pipe;
 }
 
+thread_local bool g_timed_out = false;  // set by ReadMessage / WriteMessage
+
 bool ReadMessage(HANDLE pipe, std::vector<uint8_t>* out, DWORD timeout_ms, HANDLE stop) {
+  g_timed_out = false;
   Event ev;
   out->clear();
   for (;;) {
@@ -97,6 +100,7 @@ bool ReadMessage(HANDLE pipe, std::vector<uint8_t>* out, DWORD timeout_ms, HANDL
     DWORD got = 0;
     const BOOL ok = ReadFile(pipe, out->data() + offset, kBufferSize, &got, &ov);
     const DWORD err = Complete(pipe, &ov, ok, &got, timeout_ms, stop);
+    g_timed_out = err == WAIT_TIMEOUT;
     out->resize(offset + got);
     if (err == ERROR_MORE_DATA && out->size() < kMaxRead) continue;  // rest of the message
     if (err != 0 || out->empty()) {
@@ -113,7 +117,9 @@ bool WriteMessage(HANDLE pipe, const std::vector<uint8_t>& data, DWORD timeout_m
   ov.hEvent = ev.h;
   DWORD written = 0;
   const BOOL ok = WriteFile(pipe, data.data(), static_cast<DWORD>(data.size()), &written, &ov);
-  return Complete(pipe, &ov, ok, &written, timeout_ms, stop) == 0 && written == data.size();
+  const DWORD err = Complete(pipe, &ov, ok, &written, timeout_ms, stop);
+  g_timed_out = err == WAIT_TIMEOUT;
+  return err == 0 && written == data.size();
 }
 
 bool PipeClient::Connect(const std::wstring& name, DWORD timeout_ms) {
@@ -135,17 +141,36 @@ bool PipeClient::Connect(const std::wstring& name, DWORD timeout_ms) {
 
 bool PipeClient::Call(const std::vector<uint8_t>& request, std::vector<uint8_t>* response, DWORD timeout_ms) {
   if (!connected()) return false;
+  timed_out_ = false;
+  if (++seq_ == 0) ++seq_;
+  const uint32_t seq = seq_;
+  std::vector<uint8_t> message = request;
+  if (message.size() >= 12) {  // header: magic u32 | version u16 | type u16 | seq u32 (little endian)
+    for (int i = 0; i < 4; ++i) message[8 + i] = static_cast<uint8_t>(seq >> (8 * i));
+  }
   const ULONGLONG start = GetTickCount64();
-  if (!WriteMessage(pipe_, request, timeout_ms)) {
+  if (!WriteMessage(pipe_, message, timeout_ms)) {
+    timed_out_ = g_timed_out;
     Close();
     return false;
   }
-  const ULONGLONG spent = GetTickCount64() - start;
-  const DWORD left = spent >= timeout_ms ? 1 : static_cast<DWORD>(timeout_ms - spent);
-  if (!ReadMessage(pipe_, response, left)) {
-    Close();
-    return false;
+  for (;;) {
+    const ULONGLONG spent = GetTickCount64() - start;
+    const DWORD left = spent >= timeout_ms ? 1 : static_cast<DWORD>(timeout_ms - spent);
+    if (!ReadMessage(pipe_, response, left)) {
+      timed_out_ = g_timed_out;
+      if (!timed_out_ || ++timeouts_ >= kMaxTimeouts) Close();
+      return false;
+    }
+    const uint32_t got = response->size() >= 12 ? static_cast<uint32_t>((*response)[8]) |
+                                                      static_cast<uint32_t>((*response)[9]) << 8 |
+                                                      static_cast<uint32_t>((*response)[10]) << 16 |
+                                                      static_cast<uint32_t>((*response)[11]) << 24
+                                                : seq;
+    if (got == seq) break;
+    // A late answer to an earlier, timed-out call: skip it.
   }
+  timeouts_ = 0;
   return true;
 }
 
@@ -164,6 +189,7 @@ bool PipeClient::Receive(std::vector<uint8_t>* message, DWORD timeout_ms, HANDLE
 }
 
 void PipeClient::Close() {
+  timeouts_ = 0;
   if (pipe_ != INVALID_HANDLE_VALUE) {
     CloseHandle(pipe_);
     pipe_ = INVALID_HANDLE_VALUE;

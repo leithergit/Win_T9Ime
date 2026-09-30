@@ -3,6 +3,7 @@
 // request pipe exactly like the TIP does.
 //   t9diag.exe            (run from the package folder; output to the console)
 //   t9diag.exe > diag.txt
+//   t9diag.exe --owner      process id of the host owning the request pipe
 //   t9diag.exe --watch 60   then print the host's focus / panel state for 60 s
 //                           whenever it changes (tap fields meanwhile)
 #include <windows.h>
@@ -170,7 +171,21 @@ void Watch(int seconds) {
   Line(L"watch finished");
 }
 
+// Prints the process id of the host that owns the request pipe (0: none).
+int Owner() {
+  HANDLE pipe = CreateFileW(ipc::PipeName(ipc::Endpoint::kRequest).c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                            OPEN_EXISTING, 0, nullptr);
+  ULONG pid = 0;
+  if (pipe != INVALID_HANDLE_VALUE) {
+    GetNamedPipeServerProcessId(pipe, &pid);
+    CloseHandle(pipe);
+  }
+  Line(std::to_wstring(pid));
+  return 0;
+}
+
 int wmain(int argc, wchar_t** argv) {
+  if (argc >= 2 && lstrcmpW(argv[1], L"--owner") == 0) return Owner();
   if (argc >= 2 && lstrcmpW(argv[1], L"--watch") == 0) {
     Watch(argc >= 3 ? _wtoi(argv[2]) : 60);
     return 0;

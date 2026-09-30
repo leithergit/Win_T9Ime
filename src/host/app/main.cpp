@@ -43,6 +43,7 @@ struct Args {
   bool show = false;
   bool single_instance = true;
   bool background = false;  // started by a TIP: never disturb a running host
+  bool take_over_touch_keyboard = false;
 };
 
 std::wstring ExeDir() {
@@ -94,6 +95,7 @@ Args ParseArgs() {
     else if (k == L"--no-single-instance") a.single_instance = false;
     else if (k == L"--always-show") a.always_show = true;
     else if (k == L"--background") a.background = true;
+    else if (k == L"--take-over-touch-keyboard") a.take_over_touch_keyboard = true;
     else if (k == L"--input") {
       const std::wstring v = next();
       a.input = v == L"mouse" ? panel::InputMode::kMouse
@@ -146,11 +148,12 @@ class HostApp {
     engine_.Start(eo, "t9", panel_->hwnd(), panel::PanelWindow::kEngineMessage);
     // Physical-keyboard requests from the TIP. Failure means another host owns
     // the pipe (e.g. a test instance); the panel still works.
+    // Events pipe first: a TIP attaches to it right after its Hello succeeds.
+    events_ = std::make_unique<ipc::EventServer>(focus_, args.pipe_name.empty() ? L"" : args.pipe_name + L".evt");
+    if (!events_->Start()) events_.reset();
     server_ = std::make_unique<ipc::RequestServer>(engine_, focus_, args.pipe_name);
     if (!server_->Start()) server_.reset();
     if (server_) server_->SetDiagnostics([this] { return panel_->Describe(); });
-    events_ = std::make_unique<ipc::EventServer>(focus_, args.pipe_name.empty() ? L"" : args.pipe_name + L".evt");
-    if (!events_->Start()) events_.reset();
     // Panel output goes to the focused TIP when there is one.
     panel_->SetDeliver([this](const std::wstring& text) { return focus_.PushCommit(text); });
     // Touching the panel while the foreground application has no T9Ime
@@ -171,6 +174,7 @@ class HostApp {
       panel_->PostFocusEvent(std::move(e));
     });
 
+    if (args.take_over_touch_keyboard) touch_keyboard::TakeOver();
     AddTrayIcon();
     if (args.show) panel_->Show();
     return true;
@@ -258,10 +262,8 @@ class HostApp {
     AppendMenuW(menu, MF_STRING | (s.auto_show ? MF_CHECKED : 0), kCmdAutoShow, L"触摸输入框时自动弹出键盘");
     AppendMenuW(menu, MF_STRING | (s.always_show ? MF_CHECKED : 0) | (s.auto_show ? 0 : MF_GRAYED), kCmdAlwaysShow,
                 L"任何方式聚焦输入框都弹出（无触摸屏时）");
-    if (compat::Os().AtLeastWin10()) {
-      AppendMenuW(menu, MF_STRING | (touch_keyboard::IsTakenOver() ? MF_CHECKED : 0), kCmdTouchKeyboard,
-                  L"关闭系统触摸键盘的自动弹出");
-    }
+    AppendMenuW(menu, MF_STRING | (touch_keyboard::IsTakenOver() ? MF_CHECKED : 0), kCmdTouchKeyboard,
+                compat::Os().AtLeastWin10() ? L"关闭系统触摸键盘的自动弹出" : L"关闭系统输入面板图标");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCmdExit, L"退出");
     POINT pt;

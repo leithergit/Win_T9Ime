@@ -28,9 +28,11 @@ namespace touch_keyboard {
 // True if the Windows touch keyboard is on screen (Windows 8+; false on 7).
 bool IsVisible();
 
-// Automatic invocation of the Windows touch keyboard (Windows 10/11 settings
-// under HKCU\Software\Microsoft\TabletTip\1.7). TakeOver() backs up the
-// current values and turns auto-invoke off; Restore() puts them back.
+// Automatic invocation of the Windows touch keyboard: Windows 10/11 settings
+// under HKCU\Software\Microsoft\TabletTip\1.7, and on Windows 7 the Tablet
+// PC Input Panel's icon next to text boxes and its screen-edge tab (user
+// policies). TakeOver() backs up the current values and turns them off;
+// Restore() puts them back.
 bool IsTakenOver();
 void TakeOver();
 void Restore();

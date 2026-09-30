@@ -36,6 +36,8 @@ Mode ModeForScopes(const std::vector<uint32_t>& scopes, Mode text_mode) {
                    kNumericPin, kNumericPassword})) {
     return Mode::kNumber;
   }
+  // Passwords: letters typed directly (no composition, no word prediction).
+  if (Has(scopes, {kPassword, kPrivate, kAlphanumericPin})) return Mode::kLetters;
   if (Has(scopes, {kUrl, kEmailUser, kEmailAddress, kEmailNameOrAddress, kLoginName})) return Mode::kEnglish;
   return text_mode;
 }
@@ -44,12 +46,6 @@ AutoDecision DecideOnFocus(const FocusEvent& e, const AutoShowSettings& settings
                            bool win8_or_later) {
   AutoDecision d;
   if (!e.focus_in || e.read_only) {
-    d.action = AutoAction::kHide;
-    return d;
-  }
-  // Passwords: no Chinese composition and no nine-key text entry; the panel
-  // stays out of the way (a 26-key layout is a later milestone).
-  if (Has(e.scopes, {kPassword, kPrivate, kAlphanumericPin})) {
     d.action = AutoAction::kHide;
     return d;
   }

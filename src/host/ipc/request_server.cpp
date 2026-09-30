@@ -71,6 +71,20 @@ void EventServer::Serve(HANDLE pipe, uint64_t, HANDLE stop) {
 std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
   std::vector<uint8_t> out;
   const uint32_t seq = req.seq();
+  // Requests that only touch the focus registry are answered right here: they
+  // must not wait for the engine (warm-up at start, long lookups).
+  if (req.type() == MsgType::kHello) {
+    focus_.Register(client, req.U32Or(kTagPid, 0), req.U32Or(kTagTid, 0), req.StrOr(kTagExe));
+    Writer ack(MsgType::kAck, seq);
+    ack.U32(kTagClient, static_cast<uint32_t>(client));
+    return ack.Finish();
+  }
+  if (req.type() == MsgType::kFocusIn) {
+    focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
+                   req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false),
+                   req.StrOr(kTagText), (req.U32Or(kTagFlags, 0) & kFocusNoContext) != 0);
+    return Writer(MsgType::kAck, seq).Finish();
+  }
   if (req.type() == MsgType::kDiagnostics) {
     Writer w(MsgType::kAck, seq);
     w.Str(kTagText, focus_.Describe() + (diagnostics_ ? diagnostics_() : std::wstring()));
@@ -94,7 +108,7 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
       case MsgType::kFocusIn:
         focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
                        req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false),
-                       req.StrOr(kTagText));
+                       req.StrOr(kTagText), (req.U32Or(kTagFlags, 0) & kFocusNoContext) != 0);
         out = Writer(MsgType::kAck, seq).Finish();
         return;
       case MsgType::kFocusOut:

@@ -42,7 +42,7 @@ void FocusRegistry::ClearEventPipe(uint64_t client, HANDLE pipe) {
 }
 
 void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only,
-                            std::wstring touch_debug) {
+                            std::wstring touch_debug, bool no_context) {
   FocusInfo info;
   {
     std::lock_guard lock(mutex_);
@@ -54,6 +54,7 @@ void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> sc
     f.touch = touch;
     f.read_only = read_only;
     f.focused = true;
+    f.no_context = no_context;
     if (!touch_debug.empty()) f.touch_debug = std::move(touch_debug);
     // One focused field per thread (another TIP instance on the same thread
     // cannot exist, but clear stale state from reconnects of that thread).
@@ -94,6 +95,7 @@ bool FocusRegistry::PushCommit(const std::wstring& text) {
   std::lock_guard lock(mutex_);
   for (const auto& [id, c] : clients_) {
     if (!c.info.focused || c.info.tid != tid || !c.events) continue;
+    if (c.info.no_context) return false;  // e.g. password edit: SendInput reaches it, TSF cannot
     Writer w(MsgType::kPushCommit);
     w.Str(kTagCommit, text);
     return WriteMessage(c.events, w.Finish(), 200);
@@ -110,7 +112,7 @@ std::wstring FocusRegistry::Describe() const {
     const FocusInfo& f = c.info;
     out += L"  client " + std::to_wstring(id) + L": " + f.exe.substr(f.exe.find_last_of(L"\\/") + 1) + L" pid " +
            std::to_wstring(f.pid) + L" tid " + std::to_wstring(f.tid) + (f.focused ? L" FOCUSED" : L"") +
-           (f.touch ? L" touch" : L"") + (f.read_only ? L" read-only" : L"") + (c.events ? L" events" : L" NO-EVENTS") +
+           (f.touch ? L" touch" : L"") + (f.read_only ? L" read-only" : L"") + (f.no_context ? L" no-tsf" : L"") + (c.events ? L" events" : L" NO-EVENTS") +
            L" scopes=";
     for (uint32_t s : f.scopes) out += std::to_wstring(s) + L",";
     out += L"\n";
