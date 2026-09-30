@@ -89,6 +89,7 @@ class Session {
   ~Session();
 
   bool SelectSchema(std::string_view schema_id);
+  const std::string& schema_id() const { return schema_id_; }
   void SetOption(const char* option, bool value);
 
   // Panel keys.

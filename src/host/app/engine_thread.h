@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #include "rime_engine.h"
@@ -39,12 +40,19 @@ struct EngineContext {
   // Physical-keyboard sessions (rime_ice), one per TIP connection.
   std::map<uint64_t, std::unique_ptr<Session>> clients;
   Session* Client(uint64_t id);
+  // Options applied to every session (traditional characters, emoji); schema
+  // switches reset them, so they are applied again after panel commands.
+  std::map<std::string, bool> options;
+  void ApplyOptions(Session& s) const;
 };
 
 class EngineThread {
  public:
   using Command = std::function<void(Session&, std::vector<Passthrough>&)>;
   using Task = std::function<void(EngineContext&)>;
+  // Runs with every session closed (redeploy, user dictionary); the sessions
+  // are opened again afterwards. `done` gets the result, on the engine thread.
+  using Maintenance = std::function<bool(RimeEngine&)>;
 
   EngineThread() = default;
   EngineThread(const EngineThread&) = delete;
@@ -66,6 +74,15 @@ class EngineThread {
   // UI thread: takes all snapshots published so far, oldest first.
   std::deque<EngineSnapshot> Take();
 
+  // Queues `work` (see Maintenance). While it runs, TIP requests wait and time
+  // out, so keys pass through to the applications.
+  void Maintain(Maintenance work, std::function<void(bool)> done = nullptr);
+  // Sets an option on every session, now and for sessions created later.
+  void SetOption(std::string name, bool value);
+  // Before Start(): redeploy once the engine is up (customizations changed or
+  // compiled data out of date), then call `after` with the result.
+  void DeployOnStart(std::function<void(bool)> after) { deploy_on_start_ = std::move(after); }
+
   static constexpr size_t kCandidateLimit = 120;
 
   // True once the dictionaries are warmed up (any thread; diagnostics, tests).
@@ -84,7 +101,11 @@ class EngineThread {
     Command command;                 // panel command (publishes a snapshot)
     Task task;                       // or an Invoke() task
     std::promise<void>* done = nullptr;
+    Maintenance maintenance;         // or maintenance with the sessions closed
+    std::function<void(bool)> maintenance_done;
   };
+  std::function<void(bool)> deploy_on_start_;
+  std::map<std::string, bool> initial_options_;  // SetOption() before the thread runs
   std::deque<Item> commands_;
   std::deque<EngineSnapshot> snapshots_;
   bool stop_ = false;

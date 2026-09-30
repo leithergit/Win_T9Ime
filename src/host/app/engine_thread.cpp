@@ -30,8 +30,49 @@ void EngineThread::Stop() {
 Session* EngineContext::Client(uint64_t id) {
   if (!engine) return nullptr;
   auto& session = clients[id];
-  if (!session) session = std::make_unique<Session>(*engine, "rime_ice");
+  if (!session) {
+    session = std::make_unique<Session>(*engine, "rime_ice");
+    ApplyOptions(*session);
+  }
   return session.get();
+}
+
+void EngineContext::ApplyOptions(Session& s) const {
+  for (const auto& [name, value] : options) s.SetOption(name.c_str(), value);
+}
+
+void EngineThread::Maintain(Maintenance work, std::function<void(bool)> done) {
+  {
+    std::lock_guard lock(mutex_);
+    Item item;
+    item.maintenance = std::move(work);
+    item.maintenance_done = std::move(done);
+    commands_.push_back(std::move(item));
+  }
+  cv_.notify_one();
+}
+
+void EngineThread::SetOption(std::string name, bool value) {
+  {
+    std::lock_guard lock(mutex_);
+    if (!thread_.joinable()) {  // not started yet
+      initial_options_[name] = value;
+      return;
+    }
+  }
+  // Queued, not waited for: the UI must not block behind a redeploy.
+  Item item;
+  item.task = [name, value](EngineContext& ctx) {
+    ctx.options[name] = value;
+    if (ctx.panel) ctx.panel->SetOption(name.c_str(), value);
+    for (auto& [id, session] : ctx.clients) session->SetOption(name.c_str(), value);
+    ctx.panel_changed = true;  // e.g. candidates in traditional characters
+  };
+  {
+    std::lock_guard lock(mutex_);
+    commands_.push_back(std::move(item));
+  }
+  cv_.notify_one();
 }
 
 void EngineThread::Post(Command cmd) {
@@ -81,6 +122,10 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
     return;
   }
   ctx.engine = &engine;
+  ctx.options = initial_options_;
+  // Windows 7 has no color emoji font: emoji candidates are disabled there.
+  ctx.options["emoji"] = compat::Os().AtLeastWin10();
+  if (deploy_on_start_) deploy_on_start_(engine.Redeploy());
   {
     // Warm-up: the first lookup maps the dictionaries (tens of MB) from disk,
     // which on a cold start exceeds the TIP's 150 ms key timeout. Touch both
@@ -94,17 +139,15 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
       warm.Candidates(10);
     }
     ready_ = true;
-    Session session(engine, schema);
-    ctx.panel = &session;
-    // Windows 7 has no color emoji font: emoji candidates are disabled there.
-    const bool emoji = compat::Os().AtLeastWin10();
-    session.SetOption("emoji", emoji);
+    auto session = std::make_unique<Session>(engine, schema);
+    ctx.panel = session.get();
+    ctx.ApplyOptions(*session);
 
     auto publish = [&](std::vector<Passthrough> passthrough) {
       EngineSnapshot snap;
       snap.passthrough = std::move(passthrough);
-      snap.state = session.State();
-      if (!snap.state.page.empty()) snap.candidates = session.Candidates(kCandidateLimit);
+      snap.state = session->State();
+      if (!snap.state.page.empty()) snap.candidates = session->Candidates(kCandidateLimit);
       {
         std::lock_guard lock(mutex_);
         snapshots_.push_back(std::move(snap));
@@ -122,6 +165,22 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
         item = std::move(commands_.front());
         commands_.pop_front();
       }
+      if (item.maintenance) {
+        // Every session closed (exclusive dictionary access, recompiled
+        // schemas), then the panel session again; TIP sessions come back on
+        // their next request.
+        ctx.clients.clear();
+        ctx.panel = nullptr;
+        const std::string panel_schema = session->schema_id();
+        session.reset();
+        const bool ok = item.maintenance(engine);
+        session = std::make_unique<Session>(engine, panel_schema.empty() ? schema : panel_schema);
+        ctx.panel = session.get();
+        ctx.ApplyOptions(*session);
+        publish({});
+        if (item.maintenance_done) item.maintenance_done(ok);
+        continue;
+      }
       if (item.task) {
         ctx.panel_changed = false;
         item.task(ctx);
@@ -130,8 +189,8 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
         continue;
       }
       std::vector<Passthrough> passthrough;
-      item.command(session, passthrough);
-      session.SetOption("emoji", emoji);  // schema switches reset switches
+      item.command(*session, passthrough);
+      ctx.ApplyOptions(*session);  // schema switches reset switches
       publish(std::move(passthrough));
     }
     ctx.clients.clear();

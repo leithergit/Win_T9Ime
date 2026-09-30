@@ -7,12 +7,13 @@ add_library(t9panel STATIC
   app/text_output.h app/text_output.cpp
   app/system_input.h app/system_input.cpp
   app/input_settings.h app/input_settings.cpp
+  app/settings_window.h app/settings_window.cpp
   ipc/pipe_server.h ipc/pipe_server.cpp
   ipc/focus_registry.h ipc/focus_registry.cpp
   ipc/request_server.h ipc/request_server.cpp
   ipc/ctl_server.h ipc/ctl_server.cpp)
 target_include_directories(t9panel PUBLIC panel app ipc)
-target_link_libraries(t9panel PUBLIC t9engine t9common d2d1 dwrite)
+target_link_libraries(t9panel PUBLIC t9engine t9common d2d1 dwrite comctl32 comdlg32)
 
 add_executable(T9Host WIN32 app/main.cpp app/T9Host.manifest)
 target_link_libraries(T9Host PRIVATE t9panel shell32 ole32)

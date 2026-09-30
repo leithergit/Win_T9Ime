@@ -73,6 +73,16 @@ class PanelWindow {
   // Focus changes reported by the TIPs; callable from any thread.
   void PostFocusEvent(FocusEvent e);
   AutoShowSettings& settings() { return settings_; }
+  // Settings window (M6). Theme: -1 follow the system, 0 light, 1 dark
+  // (saved; --theme on the command line wins at start). Size presets: 0 small,
+  // 1 medium (default), 2 large; size_preset() is -1 for a size set by dragging.
+  int theme_setting() const { return theme_setting_; }
+  void SetThemeSetting(int theme);
+  int size_preset() const;
+  void SetSizePreset(int preset);
+  // The Chinese / English text mode (tray icon); called when it changes.
+  Mode text_mode() const { return text_mode_; }
+  void SetOnTextModeChanged(std::function<void(Mode)> f) { on_text_mode_ = std::move(f); }
   // Human-readable state for t9diag (any thread).
   std::wstring Describe();
   void SaveSettings();
@@ -134,6 +144,9 @@ class PanelWindow {
   std::function<bool(const std::wstring&)> deliver_;
   std::function<void()> on_interaction_;
   std::function<void()> on_placement_;
+  std::function<void(Mode)> on_text_mode_;
+  int theme_setting_ = -1;
+  void UpdateTheme();
   unsigned pushed_ = 0, sent_ = 0;  // delivery statistics (test hook)
 
   AutoShowSettings settings_;

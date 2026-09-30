@@ -3,7 +3,9 @@
 //
 //   T9Host.exe [--data <dir>] [--user <dir>] [--settings <ini>] [--show]
 //              [--input pointer|touch|mouse] [--dump-layout <file>] [--no-single-instance]
-//              [--pipe <request pipe name>] [--theme light|dark]
+//              [--pipe <request pipe name>] [--theme light|dark] [--open-settings]
+//
+// --open-settings opens the settings window (in the running instance if there is one).
 
 #include <windows.h>
 #include <sddl.h>
@@ -18,8 +20,10 @@
 
 #include "ctl_server.h"
 #include "engine_thread.h"
+#include "input_settings.h"
 #include "panel_window.h"
 #include "request_server.h"
+#include "settings_window.h"
 #include "system_input.h"
 #include "text_output.h"
 #include "win_compat.h"
@@ -31,14 +35,15 @@ using namespace t9ime;
 constexpr wchar_t kHostClass[] = L"T9Ime.Host";
 constexpr UINT kTrayMessage = WM_APP + 10;
 constexpr UINT kCtlMessage = WM_APP + 11;  // lParam: std::shared_ptr<CtlCall>* (UI thread takes it)
+// From the engine thread: maintenance finished; lParam: std::wstring* status (UI thread takes it).
+constexpr UINT kMaintenanceMessage = WM_APP + 12;
 constexpr UINT kTrayId = 1;
 constexpr UINT kCmdToggle = 100;
 constexpr UINT kCmdExit = 101;
 constexpr UINT kCmdDock = 102;
-constexpr UINT kCmdAutoShow = 103;
-constexpr UINT kCmdAlwaysShow = 104;
-constexpr UINT kCmdTouchKeyboard = 105;
-constexpr UINT kCmdShowOnSwitch = 106;
+constexpr UINT kCmdSettings = 107;
+constexpr UINT kCmdRedeploy = 108;
+constexpr wchar_t kUserDict[] = L"rime_ice";  // learned words of both schemas
 constexpr UINT_PTR kSwitchTimer = 1;
 constexpr UINT kSwitchFallbackMs = 300;
 
@@ -51,6 +56,7 @@ struct Args {
   bool background = false;  // started by a TIP: never disturb a running host
   bool take_over_touch_keyboard = false;
   int theme = -1;
+  bool open_settings = false;
 };
 
 std::wstring ExeDir() {
@@ -104,6 +110,7 @@ Args ParseArgs() {
     else if (k == L"--theme") a.theme = next() == L"dark" ? 1 : 0;
     else if (k == L"--background") a.background = true;
     else if (k == L"--take-over-touch-keyboard") a.take_over_touch_keyboard = true;
+    else if (k == L"--open-settings") a.open_settings = true;
     else if (k == L"--input") {
       const std::wstring v = next();
       a.input = v == L"mouse" ? panel::InputMode::kMouse
@@ -133,9 +140,43 @@ struct CtlCall {
   std::vector<uint8_t> response;
 };
 
-class HostApp {
+// Tray icon: 中 / 英 on a colored square (the panel's text mode).
+HICON MakeTextIcon(const wchar_t* text, COLORREF background) {
+  const int size = GetSystemMetrics(SM_CXSMICON);
+  HDC screen = GetDC(nullptr);
+  HDC dc = CreateCompatibleDC(screen);
+  HBITMAP color = CreateCompatibleBitmap(screen, size, size);
+  HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);  // all 0: opaque
+  HGDIOBJ old_bitmap = SelectObject(dc, color);
+  HBRUSH brush = CreateSolidBrush(background);
+  RECT r = {0, 0, size, size};
+  FillRect(dc, &r, brush);
+  DeleteObject(brush);
+  HFONT font = CreateFontW(-size * 7 / 8, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                           CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei");
+  HGDIOBJ old_font = SelectObject(dc, font);
+  SetBkMode(dc, TRANSPARENT);
+  SetTextColor(dc, RGB(255, 255, 255));
+  DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+  SelectObject(dc, old_font);
+  DeleteObject(font);
+  SelectObject(dc, old_bitmap);
+  ICONINFO ii = {TRUE, 0, 0, mask, color};
+  HICON icon = CreateIconIndirect(&ii);
+  DeleteObject(color);
+  DeleteObject(mask);
+  DeleteDC(dc);
+  ReleaseDC(nullptr, screen);
+  return icon;
+}
+
+class HostApp : public SettingsHost {
  public:
   bool Init(HINSTANCE instance, const Args& args) {
+    instance_ = instance;
+    settings_file_ = args.settings;
+    data_dir_ = args.data;
+    user_dir_ = args.user;
     WNDCLASSEXW wc = {sizeof(wc)};
     wc.lpfnWndProc = WndProc;
     wc.hInstance = instance;
@@ -157,10 +198,21 @@ class HostApp {
     po.theme = args.theme;
     if (!panel_->Create(instance, po)) return false;
 
+    // Input settings: customizations written, compiled data checked (upgrades);
+    // deploy before the first use if needed.
+    input_ = LoadInputSettings(settings_file_);
+    if (PrepareUserData(data_dir_, user_dir_, input_)) {
+      const std::filesystem::path shared = data_dir_, user = user_dir_;
+      engine_.DeployOnStart([shared, user](bool ok) {
+        if (ok) MarkDeployed(shared, user);
+      });
+    }
+    engine_.SetOption("traditionalization", input_.traditional);
     RimeEngine::Options eo;
     eo.shared_dir = WideToUtf8(args.data);
     eo.user_dir = WideToUtf8(args.user);
     engine_.Start(eo, "t9", panel_->hwnd(), panel::PanelWindow::kEngineMessage);
+    panel_->SetOnTextModeChanged([this](panel::Mode) { UpdateTrayIcon(); });
     // Physical-keyboard requests from the TIP. Failure means another host owns
     // the pipe (e.g. a test instance); the panel still works.
     // Events pipe first: a TIP attaches to it right after its Hello succeeds.
@@ -218,11 +270,20 @@ class HostApp {
     if (args.take_over_touch_keyboard) touch_keyboard::TakeOver();
     AddTrayIcon();
     if (args.show) panel_->Show();
+    if (args.open_settings) settings_window_.Show(instance_);
     return true;
   }
 
+  // Keyboard navigation (Tab, Enter) in the settings window.
+  bool PreTranslate(MSG* msg) {
+    HWND settings = settings_window_.hwnd();
+    return settings && IsDialogMessageW(settings, msg);
+  }
+
   void Shutdown() {
+    if (HWND settings = settings_window_.hwnd()) DestroyWindow(settings);
     RemoveTrayIcon();
+    if (tray_icon_) DestroyIcon(tray_icon_);
     foreground::Stop();
     ctl_.reset();
     server_.reset();  // before the engine: connection threads call into it
@@ -257,16 +318,16 @@ class HostApp {
       if (msg == WM_COMMAND) {
         if (LOWORD(wp) == kCmdToggle) self->panel_->Toggle();
         if (LOWORD(wp) == kCmdDock) self->panel_->Dock();
-        if (LOWORD(wp) == kCmdTouchKeyboard) {
-          touch_keyboard::IsTakenOver() ? touch_keyboard::Restore() : touch_keyboard::TakeOver();
-        }
-        if (LOWORD(wp) == kCmdAutoShow || LOWORD(wp) == kCmdAlwaysShow || LOWORD(wp) == kCmdShowOnSwitch) {
-          auto& s = self->panel_->settings();
-          (LOWORD(wp) == kCmdAutoShow ? s.auto_show : LOWORD(wp) == kCmdAlwaysShow ? s.always_show : s.show_on_switch) ^=
-              true;
-          self->panel_->SaveSettings();
-        }
+        if (LOWORD(wp) == kCmdSettings) self->settings_window_.Show(self->instance_);
+        if (LOWORD(wp) == kCmdRedeploy) self->Redeploy();
         if (LOWORD(wp) == kCmdExit) PostQuitMessage(0);
+        return 0;
+      }
+      if (msg == kMaintenanceMessage) {
+        std::unique_ptr<std::wstring> status(reinterpret_cast<std::wstring*>(lp));
+        self->maintenance_busy_ = false;
+        self->settings_window_.SetStatus(*status, false);
+        self->ShowBalloon(*status);
         return 0;
       }
       if (msg == WM_TIMER && wp == kSwitchTimer) {
@@ -282,8 +343,8 @@ class HostApp {
         (*call)->response = self->HandleCtl(r);
         return 1;
       }
-      if (msg == ActivateMessage()) {
-        self->panel_->Show();
+      if (msg == ActivateMessage()) {  // another T9Host.exe was started; wParam 1: --open-settings
+        wp ? self->settings_window_.Show(self->instance_) : self->panel_->Show();
         return 0;
       }
     }
@@ -296,9 +357,46 @@ class HostApp {
     nid.uID = kTrayId;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = kTrayMessage;
-    nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-    lstrcpynW(nid.szTip, L"T9Ime 九宫格输入法", ARRAYSIZE(nid.szTip));
+    tray_icon_ = TrayIconFor(panel_->text_mode());
+    nid.hIcon = tray_icon_;
+    lstrcpynW(nid.szTip, TrayTip().c_str(), ARRAYSIZE(nid.szTip));
     Shell_NotifyIconW(NIM_ADD, &nid);
+  }
+
+  static HICON TrayIconFor(panel::Mode mode) {
+    return mode == panel::Mode::kEnglish ? MakeTextIcon(L"英", RGB(0x55, 0x5B, 0x68))
+                                         : MakeTextIcon(L"中", RGB(0x1E, 0x6F, 0xD9));
+  }
+
+  std::wstring TrayTip() const {
+    return std::wstring(L"T9Ime 九宫格输入法 - ") +
+           (panel_->text_mode() == panel::Mode::kEnglish ? L"英文" : L"中文");
+  }
+
+  void UpdateTrayIcon() {
+    HICON old = tray_icon_;
+    tray_icon_ = TrayIconFor(panel_->text_mode());
+    NOTIFYICONDATAW nid = {sizeof(nid)};
+    nid.hWnd = hwnd_;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_ICON | NIF_TIP;
+    nid.hIcon = tray_icon_;
+    lstrcpynW(nid.szTip, TrayTip().c_str(), ARRAYSIZE(nid.szTip));
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+    if (old) DestroyIcon(old);
+  }
+
+  // Result of maintenance started from the tray (the settings window shows it too).
+  void ShowBalloon(const std::wstring& text) {
+    if (settings_window_.hwnd()) return;  // shown in the window's status line
+    NOTIFYICONDATAW nid = {sizeof(nid)};
+    nid.hWnd = hwnd_;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_INFO;
+    lstrcpynW(nid.szInfoTitle, L"T9Ime", ARRAYSIZE(nid.szInfoTitle));
+    lstrcpynW(nid.szInfo, text.c_str(), ARRAYSIZE(nid.szInfo));
+    nid.dwInfoFlags = NIIF_INFO;
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
   }
 
   void RemoveTrayIcon() {
@@ -314,13 +412,8 @@ class HostApp {
     AppendMenuW(menu, MF_STRING, kCmdToggle, panel_->visible() ? L"隐藏键盘" : L"显示键盘");
     AppendMenuW(menu, MF_STRING, kCmdDock, L"停靠到屏幕底部");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    const auto& s = panel_->settings();
-    AppendMenuW(menu, MF_STRING | (s.auto_show ? MF_CHECKED : 0), kCmdAutoShow, L"触摸输入框时自动弹出键盘");
-    AppendMenuW(menu, MF_STRING | (s.always_show ? MF_CHECKED : 0) | (s.auto_show ? 0 : MF_GRAYED), kCmdAlwaysShow,
-                L"任何方式聚焦输入框都弹出（无触摸屏时）");
-    AppendMenuW(menu, MF_STRING | (s.show_on_switch ? MF_CHECKED : 0), kCmdShowOnSwitch, L"切换到 T9Ime 时弹出键盘");
-    AppendMenuW(menu, MF_STRING | (touch_keyboard::IsTakenOver() ? MF_CHECKED : 0), kCmdTouchKeyboard,
-                compat::Os().AtLeastWin10() ? L"关闭系统触摸键盘的自动弹出" : L"关闭系统输入面板图标");
+    AppendMenuW(menu, MF_STRING, kCmdSettings, L"设置…");
+    AppendMenuW(menu, MF_STRING | (maintenance_busy_ ? MF_GRAYED : 0), kCmdRedeploy, L"重新部署");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCmdExit, L"退出");
     POINT pt;
@@ -409,6 +502,91 @@ class HostApp {
     for (HWND h : notify_) PostMessageW(h, VisibilityMessage(), visible ? 1 : 0, 0);
   }
 
+  // ---------------------------------------------------------------- SettingsHost
+
+  SettingsValues CurrentSettings() override {
+    SettingsValues v;
+    v.auto_show = panel_->settings();
+    v.take_over_touch_keyboard = touch_keyboard::IsTakenOver();
+    v.theme = panel_->theme_setting();
+    v.size = panel_->size_preset();
+    v.input = input_;
+    return v;
+  }
+
+  void ApplySettings(const SettingsValues& v) override {
+    panel_->settings() = v.auto_show;
+    panel_->SaveSettings();
+    if (v.take_over_touch_keyboard != touch_keyboard::IsTakenOver()) {
+      v.take_over_touch_keyboard ? touch_keyboard::TakeOver() : touch_keyboard::Restore();
+    }
+    if (v.theme != panel_->theme_setting()) panel_->SetThemeSetting(v.theme);
+    if (v.size >= 0 && v.size != panel_->size_preset()) panel_->SetSizePreset(v.size);
+
+    const InputSettings old = input_;
+    input_ = v.input;
+    SaveInputSettings(settings_file_, input_);
+    if (input_.traditional != old.traditional) engine_.SetOption("traditionalization", input_.traditional);
+    if (!input_.SameDeployment(old)) Redeploy();
+  }
+
+  // Writes the customizations and compiles them (seconds; TIP keys pass
+  // through meanwhile). Also repairs a broken user build.
+  void Redeploy() override {
+    PrepareUserData(data_dir_, user_dir_, input_);
+    const std::filesystem::path shared = data_dir_, user = user_dir_;
+    StartMaintenance(L"正在重新部署，请稍候…", [shared, user](RimeEngine& engine) -> std::wstring {
+      if (!engine.Redeploy()) return L"重新部署失败";
+      MarkDeployed(shared, user);
+      return L"重新部署完成";
+    });
+  }
+
+  void ExportDictionary(const std::wstring& file) override {
+    const std::string path = WideToUtf8(file);
+    StartMaintenance(L"正在导出用户词库…", [path](RimeEngine& engine) -> std::wstring {
+      const int n = engine.ExportUserDict(WideToUtf8(kUserDict), path);
+      return n >= 0 ? L"已导出 " + std::to_wstring(n) + L" 条" : L"导出失败（还没有学习到的词？）";
+    });
+  }
+
+  void ImportDictionary(const std::wstring& file) override {
+    const std::string path = WideToUtf8(file);
+    StartMaintenance(L"正在导入用户词库…", [path](RimeEngine& engine) -> std::wstring {
+      const int n = engine.ImportUserDict(WideToUtf8(kUserDict), path);
+      return n >= 0 ? L"已导入 " + std::to_wstring(n) + L" 条" : L"导入失败（文件格式不对？）";
+    });
+  }
+
+  void ClearDictionary() override {
+    StartMaintenance(L"正在清空学习记录…", [](RimeEngine& engine) -> std::wstring {
+      return engine.ClearUserDict(WideToUtf8(kUserDict)) ? L"学习记录已清空" : L"清空失败";
+    });
+  }
+
+  void DockKeyboard() override { panel_->Dock(); }
+
+  // Runs `work` on the engine thread with every session closed; its status
+  // text comes back to the UI thread (settings window, tray balloon).
+  void StartMaintenance(const std::wstring& busy_text, std::function<std::wstring(RimeEngine&)> work) {
+    maintenance_busy_ = true;
+    settings_window_.SetStatus(busy_text, true);
+    auto result = std::make_shared<std::wstring>();
+    HWND hwnd = hwnd_;
+    engine_.Maintain(
+        [work, result](RimeEngine& engine) {
+          *result = work(engine);
+          return true;
+        },
+        [hwnd, result](bool) { PostMessageW(hwnd, kMaintenanceMessage, 0, reinterpret_cast<LPARAM>(new std::wstring(*result))); });
+  }
+
+  HINSTANCE instance_ = nullptr;
+  std::wstring settings_file_, data_dir_, user_dir_;
+  InputSettings input_;
+  SettingsWindow settings_window_{*this};
+  bool maintenance_busy_ = false;
+  HICON tray_icon_ = nullptr;
   HWND hwnd_ = nullptr;
   std::vector<HWND> notify_;
   bool notified_visible_ = false;
@@ -434,7 +612,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     mutex = CreateMutexW(nullptr, TRUE, name.c_str());
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
       // Already running: ask it to show the panel (unless started by a TIP).
-      if (!args.background) PostMessageW(HWND_BROADCAST, HostApp::ActivateMessage(), 0, 0);
+      if (!args.background) PostMessageW(HWND_BROADCAST, HostApp::ActivateMessage(), args.open_settings ? 1 : 0, 0);
       if (mutex) CloseHandle(mutex);
       return 0;
     }
@@ -449,6 +627,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
   }
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    if (app.PreTranslate(&msg)) continue;
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
   }

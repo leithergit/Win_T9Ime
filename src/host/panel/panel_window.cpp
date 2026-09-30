@@ -93,7 +93,6 @@ bool PanelWindow::Create(HINSTANCE instance, const PanelOptions& options) {
   RegisterClassExW(&wc);
 
   if (!renderer_.Initialize()) return false;
-  theme_ = (options_.theme < 0 ? compat::SystemPrefersDark() : options_.theme == 1) ? Theme::Dark() : Theme::Light();
 
   hwnd_ = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kClassName, L"T9Ime",
                           WS_POPUP, 0, 0, 400, 300, nullptr, nullptr, instance, this);
@@ -106,8 +105,10 @@ bool PanelWindow::Create(HINSTANCE instance, const PanelOptions& options) {
     settings_.auto_show = GetPrivateProfileIntW(L"panel", L"auto_show", 1, file) != 0;
     settings_.always_show = GetPrivateProfileIntW(L"panel", L"always_show", 0, file) != 0;
     settings_.show_on_switch = GetPrivateProfileIntW(L"panel", L"show_on_switch", 1, file) != 0;
+    theme_setting_ = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"panel", L"theme", -1, file)), -1, 1);
   }
   if (options_.always_show) settings_.always_show = true;
+  UpdateTheme();
   Relayout();
   if (!options_.dump_layout.empty()) DumpLayout();  // tests start with a hidden panel too
   return true;
@@ -119,6 +120,7 @@ void PanelWindow::SaveSettings() {
   WritePrivateProfileStringW(L"panel", L"auto_show", settings_.auto_show ? L"1" : L"0", file);
   WritePrivateProfileStringW(L"panel", L"always_show", settings_.always_show ? L"1" : L"0", file);
   WritePrivateProfileStringW(L"panel", L"show_on_switch", settings_.show_on_switch ? L"1" : L"0", file);
+  WritePrivateProfileStringW(L"panel", L"theme", std::to_wstring(theme_setting_).c_str(), file);
 }
 
 std::wstring PanelWindow::Describe() {
@@ -408,8 +410,7 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_SETTINGCHANGE:
       if (lp && lstrcmpW(reinterpret_cast<LPCWSTR>(lp), L"ImmersiveColorSet") == 0) {
-        theme_ = (options_.theme < 0 ? compat::SystemPrefersDark() : options_.theme == 1) ? Theme::Dark() : Theme::Light();
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        UpdateTheme();
       }
       return 0;
     case WM_DISPLAYCHANGE:
@@ -748,7 +749,10 @@ void PanelWindow::SetMode(Mode mode, bool remember) {
     return_mode_ = old;
   }
   mode_ = mode;
-  if (remember && (mode == Mode::kChinese || mode == Mode::kEnglish)) text_mode_ = mode;
+  if (remember && (mode == Mode::kChinese || mode == Mode::kEnglish) && mode != text_mode_) {
+    text_mode_ = mode;
+    if (on_text_mode_) on_text_mode_(mode);
+  }
   shift_ = caps_lock_ = false;
   expanded_ = false;
   side_scroll_ = grid_scroll_ = candidate_scroll_ = 0;
@@ -941,6 +945,47 @@ void PanelWindow::LoadPlacement() {
   }
   SetWindowPos(hwnd_, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top,
                SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+namespace {
+struct SizePreset {
+  float w, h;
+};
+constexpr SizePreset kSizePresets[] = {{340, 255}, {400, 300}, {520, 390}};  // DIPs, 4:3
+}  // namespace
+
+void PanelWindow::UpdateTheme() {
+  const int theme = options_.theme >= 0 ? options_.theme : theme_setting_;
+  theme_ = (theme < 0 ? compat::SystemPrefersDark() : theme == 1) ? Theme::Dark() : Theme::Light();
+  InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void PanelWindow::SetThemeSetting(int theme) {
+  theme_setting_ = std::clamp(theme, -1, 1);
+  options_.theme = -1;  // the user's choice now overrides a command-line theme
+  SaveSettings();
+  UpdateTheme();
+}
+
+int PanelWindow::size_preset() const {
+  for (int i = 0; i < 3; ++i) {
+    if (std::fabs(width_dip_ - kSizePresets[i].w) < 2 && std::fabs(height_dip_ - kSizePresets[i].h) < 2) return i;
+  }
+  return -1;
+}
+
+void PanelWindow::SetSizePreset(int preset) {
+  if (preset < 0 || preset > 2) return;
+  width_dip_ = kSizePresets[preset].w;
+  height_dip_ = kSizePresets[preset].h;
+  // Keep the bottom center where it is (the keyboard grows upwards).
+  RECT r;
+  GetWindowRect(hwnd_, &r);
+  const float scale = Scale();
+  const int w = static_cast<int>(width_dip_ * scale), h = static_cast<int>(height_dip_ * scale);
+  const int cx = (r.left + r.right) / 2;
+  SetWindowPos(hwnd_, nullptr, cx - w / 2, r.bottom - h, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+  SavePlacement();
 }
 
 void PanelWindow::MoveTo(int x, int y) {
