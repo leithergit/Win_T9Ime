@@ -33,6 +33,19 @@ enum class MsgType : uint16_t {
   kQueryState = 8,     // current state without input
   kSetAsciiMode = 9,   // value (IMM32 conversion mode / langbar)
   kDiagnostics = 30,   // -> kAck with kTagValue text (t9diag)
+  // Control pipe (T9Ctl / t9ctl.exe). Every request is answered by kAck with
+  // the panel state (kTagVisible, kTagMode, kTagX/Y/Width/Height), or kError.
+  kCtlQuery = 50,
+  kCtlShow = 51,             // optional kTagMode
+  kCtlHide = 52,
+  kCtlToggle = 53,
+  kCtlSetMode = 54,          // kTagMode
+  kCtlDock = 55,
+  kCtlSetPosition = 56,      // kTagX, kTagY (screen pixels, top-left)
+  kCtlActivate = 57,         // kTagHwnd (0: foreground window): switch its application to T9Ime
+  kCtlDeactivate = 58,       // kTagHwnd (0: foreground window): switch it to another input method
+  kCtlRegisterNotify = 59,   // kTagHwnd: post "T9Ime.Visibility" on show / hide / move
+  kCtlUnregisterNotify = 60, // kTagHwnd
   // TIP -> Host on the events pipe, once after connecting (-> no answer)
   kEventHello = 20,    // client (id from the kHello ack)
   // Host -> TIP on the events pipe
@@ -75,6 +88,13 @@ enum Tag : uint16_t {
   kTagAsciiMode = 40,
   kTagSelectLabels = 41,  // e.g. "1234567890"
   kTagSchema = 42,
+  // control fields
+  kTagMode = 50,     // 1 Chinese, 2 English, 3 numbers, 4 symbols (T9_MODE_*)
+  kTagVisible = 51,
+  kTagX = 52,
+  kTagY = 53,
+  kTagWidth = 54,
+  kTagHeight = 55,
 };
 
 // Hello flags

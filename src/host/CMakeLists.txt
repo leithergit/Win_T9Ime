@@ -8,7 +8,8 @@ add_library(t9panel STATIC
   app/system_input.h app/system_input.cpp
   ipc/pipe_server.h ipc/pipe_server.cpp
   ipc/focus_registry.h ipc/focus_registry.cpp
-  ipc/request_server.h ipc/request_server.cpp)
+  ipc/request_server.h ipc/request_server.cpp
+  ipc/ctl_server.h ipc/ctl_server.cpp)
 target_include_directories(t9panel PUBLIC panel app ipc)
 target_link_libraries(t9panel PUBLIC t9engine t9common d2d1 dwrite)
 

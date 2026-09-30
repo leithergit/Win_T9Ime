@@ -16,7 +16,12 @@ foreach ($arch in 'x86', 'x64') {
     if (-not (Test-Path "$bin\T9Host.exe")) { throw "build $arch-Release first" }
     New-Item -ItemType Directory -Force "$stage\$arch" | Out-Null
     Copy-Item "$bin\t9repl.exe", "$bin\rime.dll", "$bin\T9Host.exe", "$bin\test_target.exe", "$bin\T9Tip.dll", "$bin\t9diag.exe" "$stage\$arch"
+    # Control API (M5): DLL, command line, samples.
+    Copy-Item "$bin\T9Ctl.dll", "$bin\t9ctl.exe", "$bin\TestHost.exe" "$stage\$arch"
+    if (Test-Path "$bin\TestHost.CS.exe") { Copy-Item "$bin\TestHost.CS.exe", "$bin\TestHost.CS.exe.config" "$stage\$arch" }
 }
+New-Item -ItemType Directory -Force "$stage\sdk" | Out-Null
+Copy-Item "$root\src\ctl\t9ctl.h", "$root\samples\TestHost\cs\T9Ctl.cs" "$stage\sdk"
 # Data is architecture independent. robocopy /COPY:DAT keeps timestamps.
 robocopy (Join-Path $root 'out\build\x64-Release\bin\data') "$stage\data" /E /COPY:DAT /DCOPY:T /XF .t9ime-data-stamp /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw 'robocopy failed' }

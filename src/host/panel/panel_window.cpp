@@ -298,6 +298,10 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
       OnEngineSnapshots();
       return 0;
 
+    case WM_WINDOWPOSCHANGED:
+      if (on_placement_) on_placement_();
+      if (!options_.dump_layout.empty() && !(reinterpret_cast<WINDOWPOS*>(lp)->flags & SWP_NOMOVE)) DumpLayout();
+      break;  // DefWindowProc sends WM_SIZE / WM_MOVE
     case WM_SIZE:
       renderer_.Resize(LOWORD(lp), HIWORD(lp));
       Relayout();
@@ -799,6 +803,11 @@ void PanelWindow::LoadPlacement() {
   }
   SetWindowPos(hwnd_, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top,
                SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void PanelWindow::MoveTo(int x, int y) {
+  SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+  SavePlacement();
 }
 
 void PanelWindow::SavePlacement() {

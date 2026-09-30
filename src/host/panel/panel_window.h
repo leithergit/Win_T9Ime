@@ -56,6 +56,11 @@ class PanelWindow {
   void SetOnInteraction(std::function<void()> f) { on_interaction_ = std::move(f); }
   // Back to the default place: bottom center of the current monitor.
   void Dock();
+  // Control API: layout, position, placement changes (show / hide / move / resize).
+  Mode mode() const { return mode_; }
+  void SetModeByApplication(Mode mode) { SetMode(mode, true); }
+  void MoveTo(int x, int y);
+  void SetOnPlacement(std::function<void()> f) { on_placement_ = std::move(f); }
 
   // Focus changes reported by the TIPs; callable from any thread.
   void PostFocusEvent(FocusEvent e);
@@ -119,6 +124,7 @@ class PanelWindow {
   PanelOptions options_;
   std::function<bool(const std::wstring&)> deliver_;
   std::function<void()> on_interaction_;
+  std::function<void()> on_placement_;
   unsigned pushed_ = 0, sent_ = 0;  // delivery statistics (test hook)
 
   AutoShowSettings settings_;

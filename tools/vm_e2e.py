@@ -12,7 +12,7 @@ from pathlib import Path
 import vm
 
 ROOT = Path(__file__).resolve().parent.parent
-TESTS = ['panel', 'tip', 'push', 'autoshow', 'switch']
+TESTS = ['panel', 'tip', 'push', 'autoshow', 'switch', 'ctl', 'imm']
 
 
 def main() -> int:
@@ -27,6 +27,8 @@ def main() -> int:
         'push': f'--host {host} --target {target} --work {work}',
         'autoshow': f'--host {host} --target {target} --work {work}',
         'switch': f'--host {host} --target {target} --work {work}',
+        'ctl': f'--host {host} --target {target} --ctl {pkg}\\x64\\t9ctl.exe --work {work}',
+        'imm': f'--host {host} --target {target} --work {work}',
     }
     failed = []
     for name in sys.argv[1:] or TESTS:

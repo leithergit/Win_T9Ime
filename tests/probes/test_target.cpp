@@ -4,8 +4,13 @@
 //   --activate-tip       switch this process to the T9Ime TSF profile
 //   --activate-english   switch this process to the US English keyboard
 // Posting WM_APP + 1 to the window switches to T9Ime later (a user's switch).
+// IMM32 (sent to the window, acting on the text box):
+//   WM_APP + 2  wParam: ImmSetOpenStatus(wParam)
+//   WM_APP + 3  wParam: ImmSetConversionStatus(wParam ? IME_CMODE_NATIVE : alphanumeric)
+//   WM_APP + 4  returns ImmGetOpenStatus | ImmGetConversionStatus << 16
 // Either way the previous input method is restored on close.
 #include <windows.h>
+#include <imm.h>
 #include <msctf.h>
 #include <shellapi.h>
 
@@ -70,6 +75,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetWindowTextW(g_password_mirror, text);
       }
       return 0;
+    case WM_APP + 2:
+    case WM_APP + 3:
+    case WM_APP + 4: {
+      HIMC imc = ImmGetContext(g_edit);
+      if (!imc) return static_cast<LRESULT>(-1);
+      LRESULT result = 0;
+      DWORD conversion = 0, sentence = 0;
+      ImmGetConversionStatus(imc, &conversion, &sentence);
+      if (msg == WM_APP + 2) {
+        result = ImmSetOpenStatus(imc, wp != 0);
+      } else if (msg == WM_APP + 3) {
+        conversion = wp ? (conversion | IME_CMODE_NATIVE) : (conversion & ~IME_CMODE_NATIVE);
+        result = ImmSetConversionStatus(imc, conversion, sentence);
+      } else {
+        result = (ImmGetOpenStatus(imc) ? 1 : 0) | static_cast<LRESULT>(conversion & 0xFFFF) << 16;
+      }
+      ImmReleaseContext(g_edit, imc);
+      return result;
+    }
     case WM_APP + 1:
       SetWindowTextW(hwnd, ActivateProfile(true) ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
       return 0;

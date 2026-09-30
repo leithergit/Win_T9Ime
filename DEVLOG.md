@@ -190,3 +190,14 @@
 
 - 用户在 Win7 触屏虚拟机上按 `start_touch_test.bat` 与 M4 清单实测：触摸弹出 / 隐藏、数字框布局、密码框英文全键盘（按键放大预览、长按小字、单次大写）、系统输入面板图标隐藏、切换到 T9Ime 弹出面板、T9_2.png 布局，均符合预期。
 - M4 关闭。下一步 M5：T9Ctl.dll / t9ctl.exe / TestHost（C++ / C#）、控制管道、IMM32 兼容验证。
+
+## 2026-09-30 — M5：控制 API（T9Ctl）与 IMM32 兼容验证
+
+- **控制管道**（`…ctl`，`src/host/ipc/ctl_server`）：查询 / 显示（可带布局）/ 隐藏 / 切换 / 布局 / 停靠 / 位置 / 切到 T9Ime / 切走 / 可见性订阅；请求经 `SendMessageTimeout` 交 UI 线程执行（调用对象用 shared_ptr 交接，超时不留悬空指针），每个应答都带面板状态（可见、布局、矩形）。
+- **可见性通知**：面板 `WM_WINDOWPOSCHANGED` → 状态（可见 + 矩形）有变化时，对已注册窗口 `PostMessage("T9Ime.Visibility", wParam=可见)`；失效窗口自动剔除。
+- **T9Ctl.dll**（`src/ctl`，x86/x64，`.def` 导出无修饰名）：每次调用新建管道连接；需要 Host 的调用（显示、布局、位置、订阅、切换）在 Host 未运行时以 `--background` 拉起（DLL 同目录或已注册 TIP 同目录的 T9Host.exe）；查询类调用不拉起。`T9_Activate/Deactivate`：调用线程自己的窗口直接 `ActivateProfile(FORPROCESS)`（Win7 切走失败时退回 `ActivateKeyboardLayout`）；其他线程交 Host（FORSESSION + `WM_INPUTLANGCHANGEREQUEST`），Host 不在时 DLL 自己投递消息。`T9_RegisterVisibilityNotify` 代调用 `ChangeWindowMessageFilterEx`，提权程序也能收到通知。"切走"的目标：第一个其他语言的键盘布局，否则第一个非 T9Ime 的输入法（`src/common/ime_profile`）。
+- **t9ctl.exe**：命令行封装，`watch` 用消息窗口打印通知（e2e 用）。
+- **TestHost**：C++（Win32）与 C#（WinForms，用 Windows 自带的 .NET 3.5 编译器构建，Win7 原生可运行，config 兼容 .NET 4.x）；演示全部调用，并在键盘显示时收缩文本框避免被遮挡。
+- **IMM32 兼容**（`tests/e2e/imm_e2e.py`，test_target 新增 WM_APP+2/3/4 调 ImmSetOpenStatus / ImmSetConversionStatus / 查询）：Win11 上全部通过——ImmSetConversionStatus 切中英、ImmSetOpenStatus 关闭时按键透传、再打开恢复、T9Ime 自己的 Shift 切换反映到 ImmGetConversionStatus。
+- **ctl e2e**（`tests/e2e/ctl_e2e.py`）：状态、显示数字布局、切布局、位置 / 停靠、隐藏 / 切换、通知（含移动后的新矩形）、对另一进程窗口 activate / deactivate（物理键盘验证）。x64 全部 7 项 e2e 通过。
+- 测试包加入 `T9Ctl.dll`、`t9ctl.exe`、`TestHost*.exe` 与 `sdk\`（`t9ctl.h`、`T9Ctl.cs`）；清单 `Docs/testing/M5-checklist.md`。

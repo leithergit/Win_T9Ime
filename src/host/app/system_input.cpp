@@ -6,16 +6,19 @@
 #include <mutex>
 #include <string>
 
+#include "ime_profile.h"
 #include "win_compat.h"
 
 namespace t9ime {
 
 namespace {
 
-// Same identifiers as src/tip/globals.cpp.
-const CLSID kClsidT9Tip = {0xbb2f3ba4, 0x3b7a, 0x414a, {0xa9, 0x8f, 0x08, 0xc1, 0x00, 0xe5, 0x44, 0x7e}};
-const GUID kGuidT9Profile = {0x3ea4ff8c, 0xcaf7, 0x456f, {0x95, 0x42, 0x1c, 0x0f, 0x1e, 0xf2, 0x63, 0x5e}};
-constexpr LANGID kLangId = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+// Focus window of `window`'s thread (WM_INPUTLANGCHANGEREQUEST goes there).
+HWND FocusOf(HWND window) {
+  GUITHREADINFO gti = {sizeof(gti)};
+  const DWORD tid = GetWindowThreadProcessId(window, nullptr);
+  return GetGUIThreadInfo(tid, &gti) && gti.hwndFocus ? gti.hwndFocus : window;
+}
 constexpr ULONGLONG kRetryMs = 3000;
 
 // IFrameworkInputPane (shobjidl_core.h, Windows 8 SDK) declared locally: the
@@ -47,26 +50,31 @@ bool ImeSwitcher::Begin(HWND foreground) {
   if (foreground == last_window_ && now - last_tick_ < kRetryMs) return false;
   last_window_ = foreground;
   last_tick_ = now;
-  ITfInputProcessorProfileMgr* mgr = nullptr;
-  if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
-                              IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
-    return true;
-  }
   // FORSESSION: all threads of this desktop (the default "per user" input
   // method mode then carries it to the foreground application).
-  mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, kLangId, kClsidT9Tip, kGuidT9Profile, nullptr,
-                       TF_IPPMF_FORSESSION | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE);
-  mgr->Release();
+  ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION);
   return true;
 }
 
 void ImeSwitcher::Fallback(HWND foreground) {
   // Ask the focus window to change its input language to Chinese (Simplified);
   // with the profile marked above, that language comes up with T9Ime.
-  GUITHREADINFO gti = {sizeof(gti)};
-  const DWORD tid = GetWindowThreadProcessId(foreground, nullptr);
-  HWND target = GetGUIThreadInfo(tid, &gti) && gti.hwndFocus ? gti.hwndFocus : foreground;
-  PostMessageW(target, WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(reinterpret_cast<HKL>(0x08040804)));
+  PostMessageW(FocusOf(foreground), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(T9LanguageHkl()));
+}
+
+void ImeSwitcher::Activate(HWND window) {
+  ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION);
+  PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(T9LanguageHkl()));
+}
+
+bool ImeSwitcher::Deactivate(HWND window) {
+  TF_INPUTPROCESSORPROFILE other;
+  if (!FindOtherProfile(&other)) return false;
+  ActivateProfile(other, TF_IPPMF_FORSESSION);
+  // Windows 7 (input method per thread): ask the window's thread directly.
+  HKL hkl = other.hkl ? other.hkl : reinterpret_cast<HKL>(static_cast<ULONG_PTR>(MAKELONG(other.langid, other.langid)));
+  PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(hkl));
+  return true;
 }
 
 namespace foreground {

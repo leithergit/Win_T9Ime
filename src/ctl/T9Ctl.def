@@ -1,0 +1,17 @@
+LIBRARY T9Ctl
+EXPORTS
+  T9_IsInstalled
+  T9_Activate
+  T9_Deactivate
+  T9_ShowKeyboard
+  T9_HideKeyboard
+  T9_ToggleKeyboard
+  T9_IsKeyboardVisible
+  T9_SetMode
+  T9_GetMode
+  T9_SetDock
+  T9_SetPosition
+  T9_GetKeyboardRect
+  T9_RegisterVisibilityNotify
+  T9_UnregisterVisibilityNotify
+  T9_GetVisibilityMessage

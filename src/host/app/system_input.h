@@ -17,6 +17,10 @@ class ImeSwitcher {
   bool Begin(HWND foreground);
   // Step 2 (call ~300 ms later if the TIP did not connect).
   void Fallback(HWND foreground);
+  // Control API: both steps at once, no rate limit.
+  static void Activate(HWND window);
+  // Control API: switch `window`'s application to another input method.
+  static bool Deactivate(HWND window);
 
  private:
   HWND last_window_ = nullptr;

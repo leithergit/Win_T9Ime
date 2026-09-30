@@ -10,9 +10,13 @@
 #include <shellapi.h>
 #include <shlobj.h>
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "ctl_server.h"
 #include "engine_thread.h"
 #include "panel_window.h"
 #include "request_server.h"
@@ -26,6 +30,7 @@ using namespace t9ime;
 
 constexpr wchar_t kHostClass[] = L"T9Ime.Host";
 constexpr UINT kTrayMessage = WM_APP + 10;
+constexpr UINT kCtlMessage = WM_APP + 11;  // lParam: std::shared_ptr<CtlCall>* (UI thread takes it)
 constexpr UINT kTrayId = 1;
 constexpr UINT kCmdToggle = 100;
 constexpr UINT kCmdExit = 101;
@@ -122,6 +127,12 @@ Args ParseArgs() {
   return a;
 }
 
+// A control request marshalled to the UI thread.
+struct CtlCall {
+  std::vector<uint8_t> request;
+  std::vector<uint8_t> response;
+};
+
 class HostApp {
  public:
   bool Init(HINSTANCE instance, const Args& args) {
@@ -158,6 +169,23 @@ class HostApp {
     server_ = std::make_unique<ipc::RequestServer>(engine_, focus_, args.pipe_name);
     if (!server_->Start()) server_.reset();
     if (server_) server_->SetDiagnostics([this] { return panel_->Describe(); });
+    // Control API (T9Ctl.dll, t9ctl.exe): executed on the UI thread. The call
+    // object is shared so a timed-out request never leaves a dangling pointer.
+    ctl_ = std::make_unique<ipc::CtlServer>(
+        [this](const std::vector<uint8_t>& request) -> std::vector<uint8_t> {
+          auto call = std::make_shared<CtlCall>();
+          call->request = request;
+          auto* handoff = new std::shared_ptr<CtlCall>(call);
+          DWORD_PTR ignored = 0;
+          if (!SendMessageTimeoutW(hwnd_, kCtlMessage, 0, reinterpret_cast<LPARAM>(handoff), SMTO_NORMAL, 3000,
+                                   &ignored)) {
+            return {};  // UI thread busy or gone (the handoff is freed if the message is ever handled)
+          }
+          return call->response;
+        },
+        args.pipe_name.empty() ? L"" : args.pipe_name + L".ctl");
+    if (!ctl_->Start()) ctl_.reset();
+    panel_->SetOnPlacement([this] { NotifyPlacement(); });
     // Panel output goes to the focused TIP when there is one.
     panel_->SetDeliver([this](const std::wstring& text) { return focus_.PushCommit(text); });
     // Touching the panel while the foreground application has no T9Ime
@@ -189,12 +217,19 @@ class HostApp {
   void Shutdown() {
     RemoveTrayIcon();
     foreground::Stop();
+    ctl_.reset();
     server_.reset();  // before the engine: connection threads call into it
     events_.reset();
     engine_.Stop();
     panel_.reset();
     if (hwnd_) DestroyWindow(hwnd_);
     hwnd_ = nullptr;
+  }
+
+  // Posted to windows registered with T9_RegisterVisibilityNotify; wParam: visible.
+  static UINT VisibilityMessage() {
+    static const UINT msg = RegisterWindowMessageW(L"T9Ime.Visibility");
+    return msg;
   }
 
   static UINT ActivateMessage() {
@@ -233,6 +268,12 @@ class HostApp {
           self->switcher_.Fallback(self->switch_window_);
         }
         return 0;
+      }
+      if (msg == kCtlMessage) {
+        std::unique_ptr<std::shared_ptr<CtlCall>> call(reinterpret_cast<std::shared_ptr<CtlCall>*>(lp));
+        const ipc::Reader r((*call)->request.data(), (*call)->request.size());
+        (*call)->response = self->HandleCtl(r);
+        return 1;
       }
       if (msg == ActivateMessage()) {
         self->panel_->Show();
@@ -283,13 +324,92 @@ class HostApp {
     DestroyMenu(menu);
   }
 
+  // Control request on the UI thread; answers with the panel state.
+  std::vector<uint8_t> HandleCtl(const ipc::Reader& r) {
+    using ipc::MsgType;
+    const uint32_t seq = r.seq();
+    auto error = [seq] { return ipc::Writer(MsgType::kError, seq).Finish(); };
+    const uint32_t mode_value = r.U32Or(ipc::kTagMode, 0);
+    const std::optional<panel::Mode> mode =
+        mode_value >= 1 && mode_value <= 4 ? std::optional(static_cast<panel::Mode>(mode_value - 1)) : std::nullopt;
+    HWND target = reinterpret_cast<HWND>(static_cast<uintptr_t>(r.U32Or(ipc::kTagHwnd, 0)));
+    switch (r.type()) {
+      case MsgType::kCtlQuery:
+        break;
+      case MsgType::kCtlShow:
+        if (mode) panel_->SetModeByApplication(*mode);
+        panel_->Show();
+        break;
+      case MsgType::kCtlHide:
+        panel_->Hide();
+        break;
+      case MsgType::kCtlToggle:
+        panel_->Toggle();
+        break;
+      case MsgType::kCtlSetMode:
+        if (!mode) return error();
+        panel_->SetModeByApplication(*mode);
+        break;
+      case MsgType::kCtlDock:
+        panel_->Dock();
+        break;
+      case MsgType::kCtlSetPosition:
+        panel_->MoveTo(static_cast<int32_t>(r.U32Or(ipc::kTagX, 0)), static_cast<int32_t>(r.U32Or(ipc::kTagY, 0)));
+        break;
+      case MsgType::kCtlActivate:
+      case MsgType::kCtlDeactivate:
+        if (!target) target = GetForegroundWindow();
+        if (!target || !IsWindow(target)) return error();
+        if (r.type() == MsgType::kCtlActivate) {
+          ImeSwitcher::Activate(target);
+        } else if (!ImeSwitcher::Deactivate(target)) {
+          return error();
+        }
+        break;
+      case MsgType::kCtlRegisterNotify:
+        if (!target || !IsWindow(target)) return error();
+        if (std::find(notify_.begin(), notify_.end(), target) == notify_.end()) notify_.push_back(target);
+        break;
+      case MsgType::kCtlUnregisterNotify:
+        notify_.erase(std::remove(notify_.begin(), notify_.end(), target), notify_.end());
+        break;
+      default:
+        return error();
+    }
+    RECT rc = {};
+    GetWindowRect(panel_->hwnd(), &rc);
+    ipc::Writer ack(MsgType::kAck, seq);
+    ack.Bool(ipc::kTagVisible, panel_->visible()).U32(ipc::kTagMode, static_cast<uint32_t>(panel_->mode()) + 1);
+    ack.I32(ipc::kTagX, rc.left).I32(ipc::kTagY, rc.top);
+    ack.I32(ipc::kTagWidth, rc.right - rc.left).I32(ipc::kTagHeight, rc.bottom - rc.top);
+    return ack.Finish();
+  }
+
+  // Panel shown / hidden / moved: tell the registered windows (once per change).
+  void NotifyPlacement() {
+    if (!panel_) return;
+    const bool visible = panel_->visible();
+    RECT rc = {};
+    GetWindowRect(panel_->hwnd(), &rc);
+    if (visible == notified_visible_ && EqualRect(&rc, &notified_rect_)) return;
+    notified_visible_ = visible;
+    notified_rect_ = rc;
+    notify_.erase(std::remove_if(notify_.begin(), notify_.end(), [](HWND h) { return !IsWindow(h); }),
+                  notify_.end());
+    for (HWND h : notify_) PostMessageW(h, VisibilityMessage(), visible ? 1 : 0, 0);
+  }
+
   HWND hwnd_ = nullptr;
+  std::vector<HWND> notify_;
+  bool notified_visible_ = false;
+  RECT notified_rect_ = {};
   EngineThread engine_;
   ipc::FocusRegistry focus_;
   ImeSwitcher switcher_;
   HWND switch_window_ = nullptr;
   std::unique_ptr<ipc::RequestServer> server_;
   std::unique_ptr<ipc::EventServer> events_;
+  std::unique_ptr<ipc::CtlServer> ctl_;
   std::unique_ptr<panel::PanelWindow> panel_;
 };
 
