@@ -150,3 +150,11 @@
 - 修复：触摸判定改用线程级 WH_MOUSE 钩子读每次按下的 `MOUSEHOOKSTRUCT.dwExtraInfo`（0xFF515700 签名），并在焦点变化当下检查 GetMessageExtraInfo；原 WH_GETMESSAGE 里读 GetMessageExtraInfo 的时机不可靠。点中已有焦点的输入框（鼠标或触摸）都会重报焦点，由 Host 按设置判定（修正了"总是弹出"模式下点已聚焦输入框不弹的问题）。
 - FocusIn 附带触摸判定依据（source / extra / 最近按下），`t9diag --watch` 的 `touch:` 行可直接看到 Windows 报告了什么。Win11 注入触摸实测：extra=ff515799 → touch=1 → show。
 - 待确认：用户的 Win7 测试是在触屏真机还是 VMware 虚拟机（虚拟机里触摸会变成普通鼠标，无法识别，应改测 A7）。
+
+## 2026-09-30 — Win7 虚拟机自动化测试
+
+- 新增 `tools/vm.py`、`tools/vm_deploy.py`、`tools/vm_e2e.py`：经 vmrun 在用户的 VMware Win7 x64 SP1 虚拟机里部署测试包、注册 TIP、跑端到端测试（Python 3.8 免安装版）。
+- **Win7 结果：panel、tip、push、autoshow（总是弹出模式）、switch 全部通过**；模拟触摸在 Win7 不可用（跳过），真实触摸仍需触屏真机。
+- 虚拟机里"点击候选失败"定位：VMware 绝对指针使注入的鼠标点击落不到目标；投递窗口消息后 TIP 处理正常（同步编辑会话 hr=0）。测试在虚拟机中改用消息投递点击。
+- 顺带修复：候选窗点击/滚轮改为 PostMessage 后处理（Win11 上"点候选要到下个按键才上屏"的偶发问题）；Host 启动预热引擎（构建后首轮 e2e 变慢/失败的原因，也是用户冷启动首批按键被放行的原因）；test_target 在 Win7 上切英文键盘失败时退回 ActivateKeyboardLayout。
+- 用户的虚拟机点选 T9 输入法不会弹出面板：符合设计（只在触摸聚焦时弹，或勾选"总是弹出"）；如需"切到 T9 时弹出面板"可加选项，待用户决定。

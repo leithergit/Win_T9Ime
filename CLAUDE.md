@@ -22,6 +22,7 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - TIP 开发注册：`pwsh -File tools/dev_register.ps1 [-Unregister]`（会弹 UAC；注册 x64 与 x86 的 `out/build/*/bin/T9Tip.dll`）。注册后 DLL 被各应用加载而锁定，构建时 `tools/move_locked.py` 在链接前把旧 DLL 改名为 `.old-*`。
 - 端到端（`ctest -L e2e`，需已注册 TIP）：panel、tip、push、autoshow、switch 五项。
 - TIP 端到端：`py -3 tests/e2e/tip_e2e.py --host <x64 bin>/T9Host.exe --target <x64|x86 bin>/test_target.exe`（`ctest -L e2e` 也会跑；未注册时跳过）。构建前先 `taskkill /im T9Host.exe /f`，否则 exe 被占用。
+- **Win7 虚拟机自动化**（VMware，`vmrun`，密码在 git 忽略的 `tests/vm_pass.txt`）：`py -3 tools/make_test_package.ps1` 打包后，`cd tools && py -3 vm_deploy.py`（注销旧版、拷入新包、注册、启动 Host），`py -3 vm_e2e.py [panel tip push autoshow switch]` 在虚拟机桌面跑端到端（Python 3.8 免安装版在 `C:	9test\py`）。`py -3 tools/vm.py cmd|shot|put|get|ps` 做单项操作。虚拟机里点击用窗口消息投递（`T9IME_CLICK=post`），因为 VMware 绝对指针会把光标拉回主机鼠标位置；键盘注入正常；Win7 无 InjectTouchInput，触摸项跳过。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
 - T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance`。
 - 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
@@ -48,6 +49,8 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - InputScope 是 TSF **应用属性**：用 `ITfContext::GetAppProperty(GUID_PROP_INPUTSCOPE)` 读（CUAS 的 SetInputScope 只在那里），`GetProperty` 读不到。
 - 面板推送只推最终文字（commit），拼音 preedit 只显示在面板上，不写入文档；推送会替换掉 TIP 里正在进行的物理键盘组字。
 - T9Host 参数 `--always-show` 等同托盘"任何方式聚焦都弹出"，用于无触屏设备和测试；`InjectTouchInput`（Win8+）可在无触屏的开发机上模拟触摸（见 `tests/e2e/autoshow_e2e.py`）。
+- TIP 候选窗的点击/滚轮先 PostMessage 到 TIP 消息窗口再处理：在应用分派鼠标消息期间申请的编辑会话可能被推迟（Win11 偶发、Weasel 用伪造按键绕过）。
+- Host 启动时预热引擎（两个方案各查一次）：冷启动首次查询要映射几十 MB 词典，超过 TIP 150 ms 按键超时会导致首批按键被放行。
 - 面板鼠标输入：先 `PointerUp` 再 `ReleaseCapture`——`ReleaseCapture` 触发的 `WM_CAPTURECHANGED` 会取消按下。
 - `Session::State()` 会取走待上屏文字，引擎线程命令里不要调用它（用 `Input()/HasInput()`）。
 - 面板的所有输出（上屏、退格/回车透传、直接符号）都经引擎线程的 Passthrough 排队，保证顺序；不要在 UI 线程直接 SendInput。

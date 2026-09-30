@@ -82,6 +82,17 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
   }
   ctx.engine = &engine;
   {
+    // Warm-up: the first lookup maps the dictionaries (tens of MB) from disk,
+    // which on a cold start exceeds the TIP's 150 ms key timeout. Touch both
+    // schemas before serving requests.
+    {
+      Session warm(engine, "rime_ice");
+      for (char c : std::string("nihao")) warm.Key(c);
+      warm.Candidates(10);
+      warm.SelectSchema("t9");
+      for (char c : std::string("94664486")) warm.Key(c);
+      warm.Candidates(10);
+    }
     Session session(engine, schema);
     ctx.panel = &session;
     // Windows 7 has no color emoji font: emoji candidates are disabled there.

@@ -18,6 +18,11 @@ namespace {
 constexpr DWORD kCmodeNative = 0x0001;  // IME_CMODE_NATIVE
 constexpr UINT kPushMessage = WM_APP + 1;
 constexpr UINT kTouchTapMessage = WM_APP + 2;  // press on the focused window
+// Candidate window clicks / wheel: handled after the mouse message returns.
+// Edit sessions requested while the application is still dispatching the
+// mouse message may be deferred (CUAS on Windows 7: until the next key).
+constexpr UINT kCandidateSelectMessage = WM_APP + 3;  // wParam = index
+constexpr UINT kCandidatePageMessage = WM_APP + 4;    // wParam = backward
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 // {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
@@ -139,7 +144,9 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
 
     ui_.Attach(new CandidateUI());
     ui_->SetCallbacks({[this](UINT index) { SelectCandidate(static_cast<int>(index)); }, [this] { Abort(); }});
-    window_.SetCallbacks([this](int index) { SelectCandidate(index); }, [this](bool backward) { ChangePage(backward); });
+    window_.SetCallbacks(
+        [this](int index) { PostMessageW(message_window_, kCandidateSelectMessage, static_cast<WPARAM>(index), 0); },
+        [this](bool backward) { PostMessageW(message_window_, kCandidatePageMessage, backward ? 1 : 0, 0); });
     lang_bar_.Attach(new LangBarButton([this] { SetAsciiModeInHost(!ascii_mode_); }));
 
     WNDCLASSEXW wc = {sizeof(wc)};
@@ -599,6 +606,16 @@ void TextService::EnsureEvents() {
 }
 
 LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == kCandidateSelectMessage || msg == kCandidatePageMessage) {
+    if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+      Guard([&] {
+        if (msg == kCandidateSelectMessage) self->SelectCandidate(static_cast<int>(wp));
+        else self->ChangePage(wp != 0);
+        return S_OK;
+      });
+    }
+    return 0;
+  }
   if (msg == kPushMessage || msg == kTouchTapMessage) {
     if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
       Guard([&] {

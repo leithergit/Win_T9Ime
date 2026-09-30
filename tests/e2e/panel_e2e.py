@@ -8,6 +8,7 @@ Needs an interactive desktop; moves the mouse cursor while running.
 """
 import argparse
 import ctypes
+import os
 import json
 import subprocess
 import sys
@@ -43,7 +44,36 @@ class INPUT(ctypes.Structure):
     _fields_ = [('type', wintypes.DWORD), ('u', _U)]
 
 
+def _post_click(x: int, y: int) -> None:
+    """Delivers the click as window messages to the window under the point.
+    Used in VMware guests, where the tools' absolute pointer keeps moving the
+    cursor back to the host mouse position so injected clicks miss."""
+    user32.WindowFromPoint.restype = wintypes.HWND
+    user32.WindowFromPoint.argtypes = [wintypes.POINT]
+    hwnd = user32.WindowFromPoint(wintypes.POINT(x, y))
+    pt = wintypes.POINT(x, y)
+    user32.ScreenToClient(hwnd, ctypes.byref(pt))
+    lp = ((pt.y & 0xFFFF) << 16) | (pt.x & 0xFFFF)
+    # A real click also focuses / activates normal windows.
+    top = user32.GetAncestor(hwnd, 2)  # GA_ROOT
+    ex = user32.GetWindowLongW(top, -20)
+    if not ex & 0x08000000:  # WS_EX_NOACTIVATE
+        user32.SetForegroundWindow(top)
+        tid = user32.GetWindowThreadProcessId(hwnd, None)
+        me = ctypes.windll.kernel32.GetCurrentThreadId()
+        user32.AttachThreadInput(me, tid, True)
+        user32.SetFocus(hwnd)
+        user32.AttachThreadInput(me, tid, False)
+    user32.PostMessageW(hwnd, 0x0201, 1, lp)  # WM_LBUTTONDOWN
+    time.sleep(0.03)
+    user32.PostMessageW(hwnd, 0x0202, 0, lp)  # WM_LBUTTONUP
+    time.sleep(0.05)
+
+
 def click(x: int, y: int) -> None:
+    if os.environ.get('T9IME_CLICK') == 'post':
+        _post_click(x, y)
+        return
     vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
     vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
     ax = int((x - vx) * 65535 / (vw - 1))

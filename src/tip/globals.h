@@ -30,6 +30,7 @@ extern const GUID kGuidTfcatTipcapImmersiveSupport;
 extern const GUID kGuidTfcatTipcapSystraySupport;
 extern const GUID kGuidLbiInputMode;
 
+
 // Wraps a COM method body: exceptions never cross the COM boundary.
 template <typename F>
 HRESULT Guard(F&& f) noexcept {

@@ -5,3 +5,4 @@ data/rime-ice/
 __pycache__/
 dist/
 *.old-*
+tests/vm_pass.txt

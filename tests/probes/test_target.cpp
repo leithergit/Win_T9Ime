@@ -132,7 +132,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   ShowWindow(hwnd, show);
   SetForegroundWindow(hwnd);
   if (activate) SetWindowTextW(hwnd, ActivateProfile(true) ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
-  if (english) SetWindowTextW(hwnd, ActivateProfile(false) ? L"T9Ime TestTarget [en]" : L"T9Ime TestTarget [en failed]");
+  if (english) {
+    // Windows 7: TSF refuses a keyboard-layout profile of another language here;
+    // the classic API switches the thread (and records the previous one first).
+    bool ok = ActivateProfile(false);
+    if (!ok) ok = ActivateKeyboardLayout(LoadKeyboardLayoutW(L"00000409", 0), KLF_SETFORPROCESS) != nullptr;
+    SetWindowTextW(hwnd, ok ? L"T9Ime TestTarget [en]" : L"T9Ime TestTarget [en failed]");
+  }
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
     TranslateMessage(&msg);
