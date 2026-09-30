@@ -21,7 +21,7 @@ endforeach()
 add_test(NAME win7_imports
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/check_imports/check_imports.py"
           "$<TARGET_FILE:t9repl>" "$<TARGET_FILE:t9_unit_tests>" "$<TARGET_FILE:T9Host>"
-          "$<TARGET_FILE:test_target>" "$<TARGET_FILE:T9Tip>" "$<TARGET_FILE:rime>")
+          "$<TARGET_FILE:test_target>" "$<TARGET_FILE:T9Tip>" "$<TARGET_FILE:t9diag>" "$<TARGET_FILE:rime>")
 
 # End-to-end panel test: drives the real mouse cursor, needs an interactive desktop.
 add_executable(test_target WIN32 probes/test_target.cpp)

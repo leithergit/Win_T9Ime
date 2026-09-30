@@ -11,8 +11,10 @@ namespace {
 constexpr DWORD kMaxBackoffMs = 5000;
 constexpr DWORD kLaunchIntervalMs = 10000;
 
-// Only a normal (medium integrity, not elevated, not AppContainer) process may
-// start the host: anything else would give it the wrong token (SPEC §3).
+// Only a process with the user's normal token may start the host: not an
+// AppContainer / low integrity process, not an elevated process of a UAC
+// split-token admin. With UAC off (typical for Windows 7 VMs) every process is
+// high integrity with elevation type "default": that is the normal token there.
 bool MayLaunchHost() {
   HANDLE token = nullptr;
   if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
@@ -32,7 +34,7 @@ bool MayLaunchHost() {
   if (GetTokenInformation(token, TokenIntegrityLevel, buf, sizeof(buf), &len)) {
     auto* label = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(buf);
     const DWORD rid = *GetSidSubAuthority(label->Label.Sid, *GetSidSubAuthorityCount(label->Label.Sid) - 1);
-    if (rid != SECURITY_MANDATORY_MEDIUM_RID) ok = false;
+    if (rid < SECURITY_MANDATORY_MEDIUM_RID || rid >= SECURITY_MANDATORY_SYSTEM_RID) ok = false;
   }
   CloseHandle(token);
   return ok;
