@@ -114,3 +114,24 @@
 - 分析：虚拟键盘不出现是预期（自动弹出属 M4）。打不出汉字最可能是 T9Host 未运行：TIP 只在中完整性进程里拉起 Host，而 UAC 关闭的 Win7 所有进程都是高完整性 → 永不拉起。已放宽为：拒绝低完整性、UAC 分离令牌的提权进程、AppContainer；允许 UAC 关闭时的高完整性进程。
 - 新增 `t9diag.exe`（测试包 x86/x64 各一份）：输出系统版本、令牌、UAC、TIP 注册路径、T9Host 进程、管道连接与 nihao 实测。
 - 已知不稳定：tip_e2e 的"点击候选"偶发失败（约 1/4，多在刚重启 Host 后），待查。
+
+## 2026-09-30 — M4 面板经 TIP 上屏、自动显隐、自动切换
+
+**完成**
+- M4a 推送：事件管道（EventServer）+ 焦点登记（FocusRegistry）；TIP 每实例一个事件线程，经消息窗口回到 UI 线程，用同步优先的编辑会话上屏；面板输出优先推送，SendInput 兜底；物理键与面板组字互相让位。
+- M4b 显隐：TIP 上报 InputScope（应用属性）、只读、触摸来源（GetCurrentInputMessageSource/GetCIMSSM/线程级钩子）；密码/PIN/数字/电话/网址/邮箱字段物理键直通；Host 纯函数规则 DecideOnFocus（触摸或"总是弹出"、按 InputScope 选数字/英文/文字布局、密码与只读隐藏、Win10+ 系统浮层不弹）；隐藏 300 ms 防抖；托盘开关。
+- M4c：点面板自动切换到 T9Ime（FORSESSION → WM_INPUTLANGCHANGEREQUEST 兜底）；系统触摸键盘可见时不弹出；托盘"关闭系统触摸键盘的自动弹出"（备份/还原 TabletTip 值，Win10+）。
+- 测试：单元测试 253 断言；端到端 5 项（panel、tip、push、autoshow 含 InjectTouchInput 模拟触摸、switch），x64 全过，TIP/推送另测 x86 目标。
+- 测试包 `dist/M4/` + `Docs/testing/M4-checklist.md`。
+
+**决策**
+- 推送只含最终文字，preedit 不进文档。
+- 密码字段不自动弹出面板（九键不适合密码；26 键布局为后期里程碑）。
+
+**未验证**
+- Win7：WM_TOUCH 面板输入、钩子判定触摸来源、自动切换（按线程输入法模式）——交同事按 M4 清单。
+- Win7 平板输入面板的自动弹出设置（注册表项未知，托盘开关仅 Win10+ 显示）。
+- AppContainer 应用（开始菜单搜索等）中的推送与焦点上报。
+
+**下一步**
+- M5：T9Ctl.dll / t9ctl.exe / TestHost(C++/C#)、控制管道、IMM32 API（ImmSetOpenStatus / ImmSetConversionStatus）兼容验证。

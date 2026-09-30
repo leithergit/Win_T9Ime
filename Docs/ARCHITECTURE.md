@@ -177,7 +177,13 @@ Ctl：见 §7。
 面板按键 → 引擎线程处理 → 推送给**当前焦点 TIP**（事件管道，带 focus seq）→ TIP edit session 上屏/更新 composition → ack。
 降级：焦点窗口没有我们的 TIP 连接（非 TSF 应用，或切换 IME 失败）→ `SendInput(KEYEVENTF_UNICODE)` 上屏最终文本并记录（Debug 日志，不含内容）。对管理员进程受 UIPI 限制无效（§6.6）。
 
+### 6.3a 实现现状（M4）
+- 推送只包含最终文字（`kPushCommit`）；拼音 preedit 留在面板顶栏，不写入文档（避免与物理键盘组字互相干扰）。面板提交时若 TIP 正在物理键盘组字，由推送替换并清空 Host 端的 rime_ice 组字；物理键在面板组字时到达，则清空面板组字。
+- 推送目标 = 前台窗口线程上已上报焦点的 TIP（`FocusRegistry`），否则 SendInput 兜底。退格/回车等透传键仍走 SendInput（TIP 未组字时不吞这些键）。
+- 实测（Win11）：推送经事件管道 + 消息窗口 + 同步优先的编辑会话上屏；x64/x86 目标进程均通过。
+
 ### 6.4 自动切换到本 IME（U6）
+M4 实现：面板被触摸且前台线程无已连接 TIP 时，先 FORSESSION，300 ms 后仍未连上再向焦点窗口发 WM_INPUTLANGCHANGEREQUEST(0x08040804)，同一窗口 3 s 内只尝试一次。Win11 实测：从英文键盘状态点面板到文字经 TIP 上屏约 2.7 s（含组词操作）。Win7 待真机验证。
 M3 实测（Win11 26200）：从外部控制台进程调用 `ActivateProfile(FORSESSION|DONTCARE…)` 后新启动的记事本使用 T9Ime；在前台进程中 `FORPROCESS` 激活会改变用户全局输入法（默认"按用户"模式）。切回其他语言的键盘布局时不能带 DONTCARE 标志（否则只是标记）。已运行程序的切换效果仍需 M4 实测。
 
 1. 面板被点击，Host 发现焦点线程没有已激活的本 TIP 实例；
