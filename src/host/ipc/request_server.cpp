@@ -93,7 +93,8 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
       }
       case MsgType::kFocusIn:
         focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
-                       req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false));
+                       req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false),
+                       req.StrOr(kTagText));
         out = Writer(MsgType::kAck, seq).Finish();
         return;
       case MsgType::kFocusOut:

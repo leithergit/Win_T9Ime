@@ -41,7 +41,8 @@ void FocusRegistry::ClearEventPipe(uint64_t client, HANDLE pipe) {
   if (it != clients_.end() && it->second.events == pipe) it->second.events = nullptr;
 }
 
-void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only) {
+void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only,
+                            std::wstring touch_debug) {
   FocusInfo info;
   {
     std::lock_guard lock(mutex_);
@@ -53,6 +54,7 @@ void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> sc
     f.touch = touch;
     f.read_only = read_only;
     f.focused = true;
+    if (!touch_debug.empty()) f.touch_debug = std::move(touch_debug);
     // One focused field per thread (another TIP instance on the same thread
     // cannot exist, but clear stale state from reconnects of that thread).
     for (auto& [id, other] : clients_) {
@@ -112,6 +114,7 @@ std::wstring FocusRegistry::Describe() const {
            L" scopes=";
     for (uint32_t s : f.scopes) out += std::to_wstring(s) + L",";
     out += L"\n";
+    if (!f.touch_debug.empty()) out += L"    touch: " + f.touch_debug + L"\n";
   }
   return out;
 }

@@ -17,7 +17,7 @@ namespace {
 
 constexpr DWORD kCmodeNative = 0x0001;  // IME_CMODE_NATIVE
 constexpr UINT kPushMessage = WM_APP + 1;
-constexpr UINT kTouchTapMessage = WM_APP + 2;  // touch on the focused window
+constexpr UINT kTouchTapMessage = WM_APP + 2;  // press on the focused window
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 // {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
@@ -540,6 +540,7 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
   }
   // Computed now: it describes the input message being processed.
   const bool touch = touch_.FocusFromTouch();
+  const std::wstring touch_debug = touch_.Describe();
   HWND hwnd = nullptr;
   ComPtr<ITfContextView> view;
   if (SUCCEEDED(top->GetActiveView(&view)) && view) view->GetWnd(&hwnd);
@@ -556,7 +557,7 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
     return S_OK;
   });
   focus_scopes_ = scopes;
-  SendFocusIn(hwnd, scopes, touch, read_only);
+  SendFocusIn(hwnd, scopes, touch, read_only, touch_debug);
   if (!have_scopes) {
     ComPtr<TextService> self(this);
     RequestEditSession(top.Get(), client_id_, TF_ES_ASYNC | TF_ES_READ, [self, top, hwnd, touch, read_only](TfEditCookie ec) {
@@ -570,12 +571,14 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
   }
 }
 
-void TextService::SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only) {
+void TextService::SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only,
+                              const std::wstring& touch_debug) {
   ipc::Writer req(ipc::MsgType::kFocusIn);
   req.U32(ipc::kTagTid, GetCurrentThreadId());
   req.U32(ipc::kTagHwnd, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd)));
   for (uint32_t s : scopes) req.U32(ipc::kTagInputScope, s);
   req.Bool(ipc::kTagTouch, touch).Bool(ipc::kTagReadOnly, read_only);
+  if (!touch_debug.empty()) req.Str(ipc::kTagText, touch_debug);
   host_.Notify(std::move(req), HostClient::kKeyTimeoutMs);
   EnsureEvents();
 }
@@ -602,8 +605,8 @@ LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (msg == kPushMessage) {
           self->OnPushes();
         } else if (self->thread_mgr_) {
-          // Tapped the field that already had the focus: report it again (as
-          // touch: the press was just recorded) so the panel can pop up.
+          // Pressed the field that already had the focus: report it again
+          // (touch or not, from the press just recorded) so the panel can pop up.
           ComPtr<ITfDocumentMgr> focus;
           if (SUCCEEDED(self->thread_mgr_->GetFocus(&focus)) && focus) self->ReportFocus(focus.Get());
         }

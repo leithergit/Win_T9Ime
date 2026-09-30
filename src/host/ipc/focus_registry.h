@@ -23,6 +23,7 @@ struct FocusInfo {
   bool touch = false;           // the focus change came from touch / pen
   bool read_only = false;
   bool focused = false;
+  std::wstring touch_debug;     // what the TIP based `touch` on (diagnostics)
 };
 
 class FocusRegistry {
@@ -32,7 +33,8 @@ class FocusRegistry {
   void SetEventPipe(uint64_t client, HANDLE pipe);
   void ClearEventPipe(uint64_t client, HANDLE pipe);
 
-  void FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only);
+  void FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only,
+               std::wstring touch_debug = {});
   void FocusOut(uint64_t client);
 
   // The focused client on the foreground window's thread, if any.

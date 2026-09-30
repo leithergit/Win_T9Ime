@@ -143,3 +143,10 @@
 - 修复：TIP 钩子发现触摸点中已有焦点的窗口时重新上报焦点（带触摸标志）；`target.bat` 以 T9Ime 启动测试窗口；Host 诊断请求 + `t9diag --watch` 实时记录焦点/触摸/弹出决定；事件管道在每次连上 Host 时附着（此前某些重连路径不附着，Chrome 中看到 NO-EVENTS）；TIP 以 `--background` 拉起 Host，已在运行时不再弹出面板；T9Host 也加链接前改名（开发机上会被 TIP 随时拉起）。
 - 待回收：新 M4 包 + watch.txt。
 - 偶发：autoshow e2e 曾有一次"返回文本框后未弹出"，随后 4 次全过，待观察。
+
+## 2026-09-30 — Win7 watch.txt 分析：触摸未被识别
+
+- watch.txt：焦点上报正常（Win7 上 InputScope 也读到了，数字框 scopes=29），但所有焦点事件 touch=0，决定均为 none → 面板不弹。
+- 修复：触摸判定改用线程级 WH_MOUSE 钩子读每次按下的 `MOUSEHOOKSTRUCT.dwExtraInfo`（0xFF515700 签名），并在焦点变化当下检查 GetMessageExtraInfo；原 WH_GETMESSAGE 里读 GetMessageExtraInfo 的时机不可靠。点中已有焦点的输入框（鼠标或触摸）都会重报焦点，由 Host 按设置判定（修正了"总是弹出"模式下点已聚焦输入框不弹的问题）。
+- FocusIn 附带触摸判定依据（source / extra / 最近按下），`t9diag --watch` 的 `touch:` 行可直接看到 Windows 报告了什么。Win11 注入触摸实测：extra=ff515799 → touch=1 → show。
+- 待确认：用户的 Win7 测试是在触屏真机还是 VMware 虚拟机（虚拟机里触摸会变成普通鼠标，无法识别，应改测 A7）。

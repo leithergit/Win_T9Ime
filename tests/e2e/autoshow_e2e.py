@@ -126,7 +126,8 @@ def main() -> int:
 
     def always_scenario(panel, hwnd, edits):
         text, number, password = edits
-        check(not visible(panel), 'panel starts hidden')
+        # (With --always-show the activation-time focus report may already
+        # have shown the panel; the click must show it in any case.)
         pe.click(*center(text))
         pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown')
         check(has(panel, pe.KEY, '分词'), 'text field: Chinese nine-key layout')

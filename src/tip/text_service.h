@@ -108,7 +108,8 @@ class TextService final : public ITfTextInputProcessorEx,
   void EnsureEvents();
   void OnPushes();
   void ReportFocus(ITfDocumentMgr* doc);
-  void SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only);
+  void SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only,
+                   const std::wstring& touch_debug = {});
   bool PassThroughScope() const;
   ITfContext* FocusedContext(Microsoft::WRL::ComPtr<ITfContext>* holder);
 
