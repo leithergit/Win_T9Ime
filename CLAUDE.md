@@ -3,7 +3,7 @@
 新会话先读本文件和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存）已完成，M1–M4 真机测试包待同事回收。下一步：M5 T9Ctl 控制 API 与 IMM32 兼容验证。
+M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。下一步：M5 T9Ctl 控制 API 与 IMM32 兼容验证。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
