@@ -171,14 +171,15 @@ Layout BuildLayout(const LayoutInput& in) {
     Element& shift = add(Action::kShift, cell(0, 2, 1.5f), in.caps_lock ? L"\u21EA" : L"\u21E7", {}, {}, true);
     shift.selected = in.shift;
     add(Action::kBackspace, cell(8.5f, 2, 1.5f), L"\u232B", {}, {}, true);
-    add(Action::kSymbols, cell(0, 3, 1.2f), L"符号", {}, {}, true);
-    add(Action::kNumbers, cell(1.2f, 3, 1.2f), L"123", {}, {}, true);
-    add(Action::kText, cell(2.4f, 3, 0.9f), L",", {}, ",");
-    add(Action::kSpace, cell(3.3f, 3, 2.6f), L"空格", {}, {});
-    add(Action::kText, cell(5.9f, 3, 0.9f), L".", {}, ".");
-    add(Action::kToggleLanguage, cell(6.8f, 3, 1.1f), L"英/中", {}, {}, true);
-    add(Action::kHide, cell(7.9f, 3, 0.9f), L"\u2328\u25BE", {}, {}, true);
-    add(Action::kEnter, cell(8.8f, 3, 1.2f), L"换行", {}, {}, true);
+    // Narrow space key: room for the function keys.
+    add(Action::kSymbols, cell(0, 3, 1.3f), L"符号", {}, {}, true);
+    add(Action::kNumbers, cell(1.3f, 3, 1.3f), L"123", {}, {}, true);
+    add(Action::kText, cell(2.6f, 3, 1.0f), L",", {}, ",");
+    add(Action::kSpace, cell(3.6f, 3, 1.6f), L"空格", {}, {});
+    add(Action::kText, cell(5.2f, 3, 1.0f), L".", {}, ".");
+    add(Action::kToggleLanguage, cell(6.2f, 3, 1.3f), L"英/中", {}, {}, true);
+    add(Action::kHide, cell(7.5f, 3, 1.1f), L"\u2328\u25BE", {}, {}, true);
+    add(Action::kEnter, cell(8.6f, 3, 1.4f), L"换行", {}, {}, true);
     return out;
   } else {  // nine-key Chinese
     for (int k = 0; k < 9; ++k) {
@@ -187,15 +188,15 @@ Layout BuildLayout(const LayoutInput& in) {
     }
     add(Action::kBackspace, g.Cell(4, 0), L"⌫", {}, {}, true);
     add(Action::kClear, g.Cell(4, 1), L"清空", {}, {}, true);
-    add(Action::kSymbols, g.Cell(4, 2), L"符号", {}, {}, true);
+    add(Action::kEnter, g.Cell(4, 2), L"换行", {}, {}, true);
     // Bottom row: narrow 123 and 中/英 around a wide space key.
     const float y = top + 3 * g.row_h, x = g.side_w;
-    add(Action::kHide, g.Cell(0, 3), L"⌨▾", {}, {}, true);
+    add(Action::kSymbols, g.Cell(0, 3), L"符号", {}, {}, true);
     add(Action::kNumbers, Inset({x, y, 0.6f * g.key_w, g.row_h}, Metrics::kGap), L"123", {}, {}, true);
     add(Action::kSpace, Inset({x + 0.6f * g.key_w, y, 1.8f * g.key_w, g.row_h}, Metrics::kGap), L"空格", L"0", "0");
     add(Action::kToggleLanguage, Inset({x + 2.4f * g.key_w, y, 0.6f * g.key_w, g.row_h}, Metrics::kGap), L"中/英",
         {}, {}, true);
-    add(Action::kEnter, g.Cell(4, 3), L"换行", {}, {}, true);
+    add(Action::kHide, g.Cell(4, 3), L"⌨▾", {}, {}, true);
     return out;
   }
 

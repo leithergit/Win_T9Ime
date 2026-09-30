@@ -7,11 +7,11 @@
 //  +--------+----------------------------+----------+
 //  | pinyin | 1 分词  | 2 ABC  | 3 DEF   |  ⌫       |
 //  |  bar   | 4 GHI   | 5 JKL  | 6 MNO   |  清空     |
-//  | (list) | 7 PQRS  | 8 TUV  | 9 WXYZ  |  符号     |
+//  | (list) | 7 PQRS  | 8 TUV  | 9 WXYZ  |  换行     |
 //  +--------+------+---------------+-----+----------+
-//  |  隐藏  | 123  |    0 空格      |中/英 |  换行     |
+//  |  符号  | 123  |    0 空格      |中/英 |  隐藏     |
 //  +--------+------+---------------+-----+----------+
-// (after the iFlytek iOS nine-key layout, Docs/T9.jpg)
+// (Docs/T9_2.png, after the iFlytek iOS nine-key layout)
 //
 // English (Docs/T9_ABC.jpg): a full QWERTY keyboard (letters go straight to the field; the small
 // character on each key is typed by a long press), also used for passwords:

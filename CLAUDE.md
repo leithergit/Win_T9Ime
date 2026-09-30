@@ -36,7 +36,7 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 
 ## 已知陷阱
 - librime 的 maintenance 按文件 mtime 判断是否重建；zip（2 秒精度、本地时区）解压后会触发约 7 s 的重建。因此 **RimeEngine 默认不跑 maintenance**（`Options::maintenance=false`），直接用预部署数据。代价：用户改配置后必须显式重新部署；升级时要清理用户目录 `build/`（staging 会遮蔽新的预部署数据）——M6 处理。
-- 面板英文模式是 QWERTY 全键盘，字母直接上屏，不经引擎（密码框也用它）；中文九宫格与英文键盘外观参照 `Docs/T9.jpg`、`Docs/T9_ABC.jpg`。
+- 面板英文模式是 QWERTY 全键盘，字母直接上屏，不经引擎（密码框也用它）；中文九宫格布局按 `Docs/T9_2.png`（用户定稿），外观与英文键盘参照 `Docs/T9.jpg`、`Docs/T9_ABC.jpg`。
 - 英文九键是独立方案 `t9_eng`（面板已不用，仅 t9repl 回归）（`data/custom/t9_eng.schema.yaml`，xlit 数字码，单独 prism）。不要把 melt_eng 挂进 t9：非主翻译器的 prism 不会被部署，而且 derive 会让英文 prism 膨胀。
 - `RimeContext.composition.cursor_pos/sel_*` 是 preedit 的 **UTF-8 字节偏移**。
 - 官方 librime 无 `t9_processor`：回车会上屏原始数字、退格逐字母删，需前端实现语义。
