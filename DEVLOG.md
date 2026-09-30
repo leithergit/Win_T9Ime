@@ -237,3 +237,10 @@
 - **D5**：`T9_ShowKeyboard` / `T9_ToggleKeyboard`（变为可见时）在调用线程拥有前台窗口时（按钮处理函数里），顺带把该程序切到 T9Ime（FORPROCESS；已是 T9Ime 则不动）。t9ctl.exe 在控制台里调用时不切。同时键盘已显示时，"切到 T9Ime"的焦点事件不再改布局（否则程序指定的数字布局会被重置为中文）。
 - **D2 兜底**：面板可见期间每 400 ms 查看前台线程的输入语言（`GetKeyboardLayout`），切到非中文语言即隐藏——覆盖 T9Ime 并未激活的程序；T9Ime 激活时仍由 TIP 的停用上报处理。
 - ctl e2e 增加 TestHost 场景（BM_CLICK"数字" → 数字布局、TestHost 物理键盘出中文、deactivate 后键盘隐藏）；x64 七项 e2e 全过。
+
+## 2026-09-30 — D2：T9Ctl 不再在调用线程里切换输入法
+
+- 复测：D5 通过；D2 仍不通过。用户观察：由"切换输入法"弹出的键盘都能随切换隐藏；由 T9Ctl 显示的键盘不能。
+- 原因（推断）：T9Ctl 在调用程序的 UI 线程里 `CoInitializeEx` → `ActivateProfile(FORPROCESS)` → `CoUninitialize`；Win7 上随后 T9Ime 在该线程里收不到停用通知（隐藏依赖该通知）。
+- 修复：T9Ctl 不再在调用线程做任何 TSF / COM 操作。`T9_ShowKeyboard` / `T9_ToggleKeyboard` 把调用者的前台窗口交给 Host，由 Host 在前台线程没有 T9Ime 时执行与面板点击相同的切换（会话级 profile + 向窗口投递 `WM_INPUTLANGCHANGEREQUEST`）；`T9_Activate` / `T9_Deactivate` 一律经 Host，Host 不在时直接投递 `WM_INPUTLANGCHANGEREQUEST`。
+- ctl e2e 的 D2 改为模拟用户切换：向 TestHost 输入框投递 `WM_INPUTLANGCHANGEREQUEST`（其他语言的键盘布局），键盘隐藏。Win11 通过，Win7 待触屏虚拟机复测。

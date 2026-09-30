@@ -210,13 +210,21 @@ def main() -> int:
         te.tap(te.VK['space'])
         time.sleep(0.5)
         check(pe.window_text(th_edit) == '你好', f'TestHost was switched to T9Ime (got {pe.window_text(th_edit)!r})')
-        code, _ = ctl('deactivate', str(th))
+        # The user switches the language like Ctrl+Shift / the language bar do:
+        # WM_INPUTLANGCHANGEREQUEST in TestHost's own thread.
+        layouts = (ctypes.c_void_p * 16)()
+        count = user32.GetKeyboardLayoutList(16, layouts)
+        other = next((layouts[i] for i in range(count) if (layouts[i] or 0) & 0xFFFF != 0x0804), None)
+        if other:
+            user32.PostMessageW(th_edit, 0x0050, 0, ctypes.c_void_p(other))  # WM_INPUTLANGCHANGEREQUEST
+        else:
+            ctl('deactivate', str(th))
         ok = True
         try:
             pe.wait_for(lambda: not (panel.read() or {}).get('visible'), timeout=5, what='panel hidden')
         except AssertionError:
             ok = False
-        check(code == 0 and ok, 'switching TestHost to another input method hides the keyboard')
+        check(ok, f'switching TestHost to another input method hides the keyboard (layout {hex(other or 0)})')
         user32.PostMessageW(th, pe.WM_CLOSE, 0, 0)
         testhost.wait(5)
         target = None

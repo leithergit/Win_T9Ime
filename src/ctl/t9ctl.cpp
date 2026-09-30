@@ -102,41 +102,19 @@ ipc::Writer WithWindow(ipc::MsgType type, HWND hwnd) {
 
 bool ValidMode(int mode) { return mode >= T9_MODE_CHINESE && mode <= T9_MODE_SYMBOL; }
 
-struct ComScope {
-  HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-  ~ComScope() {
-    if (SUCCEEDED(hr)) CoUninitialize();
-  }
-};
-
 HWND FocusOf(HWND window) {
   GUITHREADINFO gti = {sizeof(gti)};
   return GetGUIThreadInfo(GetWindowThreadProcessId(window, nullptr), &gti) && gti.hwndFocus ? gti.hwndFocus : window;
 }
 
-HKL HklOf(const TF_INPUTPROCESSORPROFILE& p) {
-  return p.hkl ? p.hkl : reinterpret_cast<HKL>(static_cast<ULONG_PTR>(MAKELONG(p.langid, p.langid)));
-}
-
 bool OnCallingThread(HWND hwnd) { return GetWindowThreadProcessId(hwnd, nullptr) == GetCurrentThreadId(); }
 
-// The keyboard is shown for the calling application: when the caller owns the
-// foreground window (a button click in its UI), switch it to T9Ime as well, so
-// the keyboard's input goes through T9Ime and the input indicator says so.
-void ActivateForCaller() {
+// The keyboard is shown for the calling application when the caller owns the
+// foreground window (a button click in its UI): T9Host then switches that
+// application to T9Ime too (D5). Not on this thread - see T9_Activate.
+HWND CallerWindow() {
   HWND fg = GetForegroundWindow();
-  if (!fg || !OnCallingThread(fg)) return;  // e.g. t9ctl.exe in a console, or a worker thread
-  ComScope com;
-  ITfInputProcessorProfileMgr* mgr = nullptr;
-  if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
-                              IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
-    return;
-  }
-  TF_INPUTPROCESSORPROFILE active = {};
-  const bool already = SUCCEEDED(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &active)) &&
-                       active.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR && IsEqualCLSID(active.clsid, kClsidT9Tip);
-  mgr->Release();
-  if (!already) ActivateProfile(T9Profile(), TF_IPPMF_FORPROCESS);
+  return fg && OnCallingThread(fg) ? fg : nullptr;
 }
 
 }  // namespace
@@ -161,13 +139,13 @@ BOOL T9_API T9_IsInstalled(void) {
   return TRUE;
 }
 
+// Switching goes through T9Host (session profile + WM_INPUTLANGCHANGEREQUEST to
+// the window), even for the caller's own window: activating a TSF profile on
+// the caller's thread needs COM there, and initializing / uninitializing COM
+// around it left T9Ime unable to notice being switched off again (Windows 7).
 BOOL T9_API T9_Activate(HWND hwnd) {
   if (!hwnd) hwnd = GetForegroundWindow();
   if (!hwnd || !IsWindow(hwnd)) return FALSE;
-  if (OnCallingThread(hwnd)) {
-    ComScope com;
-    return ActivateProfile(T9Profile(), TF_IPPMF_FORPROCESS) ? TRUE : FALSE;
-  }
   if (Call(WithWindow(ipc::MsgType::kCtlActivate, hwnd), true)) return TRUE;
   // No host: at least ask the window's thread for the T9Ime language.
   return PostMessageW(FocusOf(hwnd), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(T9LanguageHkl()));
@@ -176,25 +154,21 @@ BOOL T9_API T9_Activate(HWND hwnd) {
 BOOL T9_API T9_Deactivate(HWND hwnd) {
   if (!hwnd) hwnd = GetForegroundWindow();
   if (!hwnd || !IsWindow(hwnd)) return FALSE;
-  if (OnCallingThread(hwnd)) {
-    ComScope com;
-    TF_INPUTPROCESSORPROFILE other;
-    if (!FindOtherProfile(&other)) return FALSE;
-    if (ActivateProfile(other, TF_IPPMF_FORPROCESS)) return TRUE;
-    // Windows 7 refuses keyboard layouts of another language here.
-    return ActivateKeyboardLayout(HklOf(other), KLF_SETFORPROCESS) != nullptr;
-  }
   if (Call(WithWindow(ipc::MsgType::kCtlDeactivate, hwnd), false)) return TRUE;
-  ComScope com;
-  TF_INPUTPROCESSORPROFILE other;
-  if (!FindOtherProfile(&other)) return FALSE;
-  return PostMessageW(FocusOf(hwnd), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(HklOf(other)));
+  // No host: switch the window's thread to the first other language.
+  HKL layouts[16];
+  const int n = GetKeyboardLayoutList(16, layouts);
+  for (int i = 0; i < n; ++i) {
+    if (LOWORD(reinterpret_cast<ULONG_PTR>(layouts[i])) != kT9LangId) {
+      return PostMessageW(FocusOf(hwnd), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(layouts[i]));
+    }
+  }
+  return FALSE;
 }
 
 BOOL T9_API T9_ShowKeyboard(int mode) {
   if (mode != T9_MODE_KEEP && !ValidMode(mode)) return FALSE;
-  ActivateForCaller();
-  ipc::Writer w(ipc::MsgType::kCtlShow);
+  ipc::Writer w = WithWindow(ipc::MsgType::kCtlShow, CallerWindow());
   if (mode != T9_MODE_KEEP) w.U32(ipc::kTagMode, static_cast<uint32_t>(mode));
   return Call(std::move(w), true);
 }
@@ -204,12 +178,7 @@ BOOL T9_API T9_HideKeyboard(void) {
   return !T9_IsKeyboardVisible();  // no host: nothing to hide
 }
 
-BOOL T9_API T9_ToggleKeyboard(void) {
-  State s;
-  if (!Call(ipc::Writer(ipc::MsgType::kCtlToggle), true, &s)) return FALSE;
-  if (s.visible) ActivateForCaller();
-  return TRUE;
-}
+BOOL T9_API T9_ToggleKeyboard(void) { return Call(WithWindow(ipc::MsgType::kCtlToggle, CallerWindow()), true); }
 
 BOOL T9_API T9_IsKeyboardVisible(void) {
   State s;

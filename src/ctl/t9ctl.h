@@ -33,9 +33,8 @@ extern "C" {
 BOOL T9_API T9_IsInstalled(void);
 
 /* Switch the application owning `hwnd` (NULL: the foreground window) to T9Ime,
- * or away from it (to the first other input method of the user). On the
- * calling thread the switch is immediate; for other threads it is requested
- * asynchronously. */
+ * or away from it (to the first other input method of the user). The switch
+ * is requested asynchronously and takes effect within a moment. */
 BOOL T9_API T9_Activate(HWND hwnd);
 BOOL T9_API T9_Deactivate(HWND hwnd);
 

@@ -344,16 +344,22 @@ class HostApp {
       case MsgType::kCtlQuery:
         break;
       case MsgType::kCtlShow:
-        if (mode) panel_->SetModeByApplication(*mode);
-        panel_->Show();
-        panel_->BindToForeground();  // hides when the user switches to another application
+      case MsgType::kCtlToggle:
+        if (r.type() == MsgType::kCtlShow) {
+          if (mode) panel_->SetModeByApplication(*mode);
+          panel_->Show();
+        } else {
+          panel_->Toggle();
+        }
+        if (panel_->visible()) {
+          panel_->BindToForeground();  // hides when the user switches to another application
+          // Shown by the application itself (its window given): its input
+          // should go through T9Ime too (D5).
+          if (target && IsWindow(target) && !focus_.Foreground(nullptr)) ImeSwitcher::Activate(target);
+        }
         break;
       case MsgType::kCtlHide:
         panel_->Hide();
-        break;
-      case MsgType::kCtlToggle:
-        panel_->Toggle();
-        if (panel_->visible()) panel_->BindToForeground();
         break;
       case MsgType::kCtlSetMode:
         if (!mode) return error();
