@@ -269,6 +269,7 @@ void PanelWindow::Hide() {
   tracks_.clear();
   KillTimer(hwnd_, kLongPressTimer);
   KillTimer(hwnd_, kRepeatTimer);
+  long_press_due_ = repeat_due_ = 0;
   ShowWindow(hwnd_, SW_HIDE);
   if (!options_.dump_layout.empty()) DumpLayout();
 }
@@ -475,6 +476,8 @@ void PanelWindow::PointerDown(UINT32 id, POINT screen) {
   if (t.action == Action::kBackspace || t.action == Action::kKey || t.action == Action::kSpace ||
       t.action == Action::kLetter) {
     long_press_id_ = id;
+    long_press_due_ = GetTickCount64() + kLongPressMs;
+    repeat_due_ = 0;
     SetTimer(hwnd_, kLongPressTimer, kLongPressMs, nullptr);
   }
   InvalidateRect(hwnd_, nullptr, FALSE);
@@ -504,13 +507,20 @@ void PanelWindow::PointerMove(UINT32 id, POINT screen) {
   }
   float x, y;
   ScreenToDip(screen, &x, &y);
+  if (x == t.lx && y == t.ly) {  // a finger held still: nothing to redraw
+    FireDue(id);
+    return;
+  }
   if (t.region != Region::kNone) {
     const bool horizontal = t.region == Region::kCandidateBar;
     const float total = horizontal ? x - t.x0 : y - t.y0;
     if (!t.scrolling && std::fabs(total) > kScrollSlop) {
       t.scrolling = true;
       TracePointer("scroll", id, x, y);
-      if (id == long_press_id_) KillTimer(hwnd_, kLongPressTimer);
+      if (id == long_press_id_) {
+        KillTimer(hwnd_, kLongPressTimer);
+        long_press_due_ = 0;
+      }
     }
     if (t.scrolling) {
       ApplyScroll(t.region, -(horizontal ? x - t.lx : y - t.ly));
@@ -527,14 +537,29 @@ void PanelWindow::PointerMove(UINT32 id, POINT screen) {
       }
     }
     t.inside = inside || t.swipe_clear;
-    if (!t.inside && id == long_press_id_) {
+    if (!t.inside && id == long_press_id_ && long_press_due_) {
       KillTimer(hwnd_, kLongPressTimer);
+      long_press_due_ = 0;
       TracePointer("slid-off", id, x, y);
     }
   }
   t.lx = x;
   t.ly = y;
   InvalidateRect(hwnd_, nullptr, FALSE);
+  FireDue(id);
+}
+
+// Pointer updates keep coming while a finger is held (real touch screens send
+// them even when it does not move), each one repainting the panel: WM_TIMER
+// may then never be generated, so the updates fire what is due themselves.
+void PanelWindow::FireDue(UINT32 id) {
+  if (id != long_press_id_) return;
+  const ULONGLONG now = GetTickCount64();
+  if (long_press_due_ && now >= long_press_due_) {
+    OnTimer(kLongPressTimer);
+  } else if (repeat_due_ && now >= repeat_due_) {
+    OnTimer(kRepeatTimer);
+  }
 }
 
 void PanelWindow::PointerUp(UINT32 id, POINT screen) {
@@ -547,6 +572,7 @@ void PanelWindow::PointerUp(UINT32 id, POINT screen) {
     KillTimer(hwnd_, kLongPressTimer);
     KillTimer(hwnd_, kRepeatTimer);
     long_press_id_ = 0;
+    long_press_due_ = repeat_due_ = 0;
   }
   if (t.action == Action::kHandle) {
     if (screen.x != t.screen0.x || screen.y != t.screen0.y) SavePlacement();
@@ -564,6 +590,7 @@ void PanelWindow::PointerCancel(UINT32 id) {
     KillTimer(hwnd_, kLongPressTimer);
     KillTimer(hwnd_, kRepeatTimer);
     long_press_id_ = 0;
+    long_press_due_ = repeat_due_ = 0;
   }
   InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -573,13 +600,17 @@ void PanelWindow::OnTimer(UINT_PTR timer) {
   if (it == tracks_.end() || !it->second.inside || it->second.scrolling) {
     if (timer == kLongPressTimer) TracePointer(it == tracks_.end() ? "long-no-track" : "long-skipped", long_press_id_);
     KillTimer(hwnd_, timer);
+    (timer == kLongPressTimer ? long_press_due_ : repeat_due_) = 0;
     return;
   }
   if (timer == kLongPressTimer) {
+    if (!long_press_due_) return;  // already fired from a pointer update
     KillTimer(hwnd_, kLongPressTimer);
+    long_press_due_ = 0;
     TracePointer("long-press", long_press_id_, it->second.lx, it->second.ly);
     LongPress(it->second);
   } else if (timer == kRepeatTimer) {
+    repeat_due_ = GetTickCount64() + kRepeatMs;
     Execute(Action::kBackspace, -1, {}, {});
   }
 }
@@ -590,6 +621,7 @@ void PanelWindow::LongPress(Track& t) {
   switch (t.action) {
     case Action::kBackspace:
       Execute(Action::kBackspace, -1, {}, {});
+      repeat_due_ = GetTickCount64() + kRepeatMs;
       SetTimer(hwnd_, kRepeatTimer, kRepeatMs, nullptr);
       break;
     case Action::kLetter:

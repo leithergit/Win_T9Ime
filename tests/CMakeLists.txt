@@ -75,3 +75,10 @@ add_test(NAME e2e_switch
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/switch_e2e.py"
           --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>" --work "${CMAKE_BINARY_DIR}/e2e")
 set_tests_properties(e2e_switch PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+
+# Touch (InjectTouchInput, Windows 8+): long presses with a real touch screen's
+# update rate; TestHost buttons tapped with a finger.
+add_test(NAME e2e_touch
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/touch_e2e.py"
+          --host "$<TARGET_FILE:T9Host>" --ctl "$<TARGET_FILE:t9ctl_cli>" --work "${CMAKE_BINARY_DIR}/e2e")
+set_tests_properties(e2e_touch PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)

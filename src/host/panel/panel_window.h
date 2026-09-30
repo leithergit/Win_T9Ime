@@ -103,6 +103,7 @@ class PanelWindow {
   void PointerUp(UINT32 id, POINT screen);
   void PointerCancel(UINT32 id);
   void OnTimer(UINT_PTR id);
+  void FireDue(UINT32 id);
   bool HandleTouch(WPARAM wp, LPARAM lp);
 
   void Execute(Action action, int index, const std::string& text, const std::wstring& label);
@@ -169,6 +170,10 @@ class PanelWindow {
 
   std::map<UINT32, Track> tracks_;
   UINT32 long_press_id_ = 0;  // pointer waiting for the long-press timer
+  // When the long press / the next BackSpace repeat is due (0: not armed).
+  // A held finger keeps sending pointer updates, and WM_TIMER is generated
+  // only when the queue is otherwise empty, so updates fire what is due too.
+  ULONGLONG long_press_due_ = 0, repeat_due_ = 0;
 };
 
 }  // namespace t9ime::panel

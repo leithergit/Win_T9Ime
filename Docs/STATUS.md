@@ -21,7 +21,7 @@
 
 用鼠标操作全部正常，只有手指触摸出问题：
 
-1. **英文全键盘长按字母不输入小字、不显示预览**（长按 q 应输入 1 并在按键上方显示）。
+1. **英文全键盘长按字母不输入小字、不显示预览**（长按 q 应输入 1 并在按键上方显示）。——**已修复**（WM_TIMER 被持续的指针更新饿死，见下），注入触摸验证通过，待真实手指复测。
 2. **TestHost 点"显示键盘"能显示，但点"隐藏键盘"不生效。**
 3. **从 TestHost(C++) 切换到 TestHost(C#)，键盘不消失**（焦点确实到了 C# 窗口）。
 4. **"切换"只能显示不能隐藏；"数字""符号"切换不了布局。**
@@ -40,11 +40,9 @@ TIP 把"最近一次按下来自触摸/笔"之后发生的焦点变化当作"用
 
 **修复方向**：只有当触摸按下的位置就在获得焦点的输入框（或其子窗口）上时，才算"触摸聚焦输入框"。TouchTracker 需要记录最近一次按下的窗口/坐标，`ReportFocus` 时与焦点窗口比较；程序自己 `SetFocus` 造成的焦点变化不算触摸。可用 `InjectTouchInput`（Win8+，见 `tests/e2e/autoshow_e2e.py` 的 `touch_tap`）在开发机上复现与回归：注入触摸点 TestHost 的"隐藏键盘"按钮，应保持隐藏。
 
-### 分析（问题 1，原因未明）
+### 问题 1（已修复）
 
-- Win7 上怀疑是系统"按住 = 右键"手势接管了按住的手指：已让面板响应 `WM_TABLET_QUERYSYSTEMGESTURESTATUS` 并修正 `MicrosoftTabletPenServiceProperty` 标志（commit 7f91ae6），但 Win11（WM_POINTER 路径）上同样失败，说明另有原因。
-- 已加诊断：面板记录最近 40 个指针事件（按下 / 滑出 / 滚动 / 长按触发或跳过 / 抬起 / 取消），`t9diag` 输出里 `recent pointer events` 一节可见。复现一次长按后运行 `t9diag`，看是 `long-press` 未出现、`slid-off`、`cancel` 还是 `long-skipped`。
-- 可用 `InjectTouchInput` 注入"按下—保持—抬起"在开发机复现（`POINTER_FLAG_DOWN` 后隔 ~100 ms 发 `POINTER_FLAG_UPDATE|INCONTACT` 保持，再 `UP`）。
+真实手指长按时指针记录只有 `down` → `up`，没有 `long-press`/`long-skipped`：长按计时器的 WM_TIMER 没被处理。真实触屏手指静止时也持续发送指针更新（约 8 ms 一次），每次都重绘，WM_TIMER（最低优先级）一直生成不了。修复：指针更新时按到期时刻触发长按与退格连发（`PanelWindow::FireDue`），坐标不变的更新不重绘。回归测试 `e2e_touch`（注入触摸，每 8 ms 一次 UPDATE）。
 
 ## 在 Win11 触屏机上继续开发
 

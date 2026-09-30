@@ -261,3 +261,10 @@
 - 复测：鼠标长按预览通过；触屏长按既不输入小字也不显示预览（长按根本没触发）。
 - 推断：Win7 的"按住 = 右键"手势接管了按住的手指。面板原先只设置了 `MicrosoftTabletPenServiceProperty` 窗口属性，且其中一个标志值写错（0x40000 实为 ENABLE_FLICKLEARNINGMODE）。现在：标志改为 tpcshrd.h 的正确值（禁用按住、笔点击/笔杆反馈、轻拂、轻拂快捷键），并响应 `WM_TABLET_QUERYSYSTEMGESTURESTATUS` 返回同样的标志。
 - 诊断：面板记录最近 40 个指针事件（按下 / 滑出 / 滚动 / 长按触发或跳过 / 抬起 / 取消，带毫秒与坐标），t9diag 输出里可见；M5 启动脚本录制的 `results\m5_watch.txt` 会包含它。
+
+## 2026-09-30 — 问题 1：触屏长按不触发（真实原因：WM_TIMER 被饿死）
+
+- 取证（Win11 触屏，真实手指，t9diag --watch）：长按 q 时指针记录只有 `down` → 2.1 s 后 `up`，中间既无 `long-press` 也无 `long-skipped` / `long-no-track`——长按计时器的 WM_TIMER 根本没有被处理，而不是被取消。注入触摸（每 50 ms 一次 UPDATE）长按正常。
+- 原因：真实触屏在手指静止时也持续发送指针更新（约每 8 ms 一次，Win7 的 WM_TOUCH / 触摸转鼠标同样），每次 `PointerMove` 都 `InvalidateRect`；WM_TIMER 只在队列里没有输入消息和 WM_PAINT 时才生成，于是一直得不到处理。鼠标按住不动没有消息，所以正常。把注入的 UPDATE 间隔改为 8 ms 即可在开发机稳定复现（长按 q 输入 q；按住退格也不连发）。Win7 的"按住 = 右键"修正（7f91ae6）不是主因。
+- 修复（`panel_window.cpp`）：长按与退格连发记录到期时刻（`long_press_due_`、`repeat_due_`），WM_TIMER 仍然保留，同时每次指针更新检查到期即触发（`FireDue`），两者只会触发一次；坐标没变的更新不重绘。鼠标、WM_POINTER、WM_TOUCH 走同一路径。
+- 回归：新增 `e2e_touch`（`tests/e2e/touch_e2e.py`，InjectTouchInput，按住期间每 8 ms 一次 UPDATE）：长按 q 输入 1、按住退格连续删除。修复前两项都失败，修复后通过；鼠标长按仍正常。
