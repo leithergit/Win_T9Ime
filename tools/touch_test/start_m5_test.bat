@@ -8,6 +8,8 @@ set SRC=%~dp0T9Ime-test
 set RES=%~dp0results
 if not exist "%RES%" mkdir "%RES%"
 
+if exist "%SRC%\VERSION.txt" type "%SRC%\VERSION.txt"
+echo.
 echo [1/5] Stopping T9Host and unregistering the previous build...
 taskkill /im T9Host.exe /f > nul 2>&1
 for /f "tokens=2,*" %%a in ('reg query "HKCR\CLSID\%CLSID%\InprocServer32" /ve 2^>nul ^| find "REG_SZ"') do (

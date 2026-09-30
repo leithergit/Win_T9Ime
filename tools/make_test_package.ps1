@@ -20,6 +20,9 @@ foreach ($arch in 'x86', 'x64') {
     Copy-Item "$bin\T9Ctl.dll", "$bin\t9ctl.exe", "$bin\TestHost.exe" "$stage\$arch"
     if (Test-Path "$bin\TestHost.CS.exe") { Copy-Item "$bin\TestHost.CS.exe", "$bin\TestHost.CS.exe.config" "$stage\$arch" }
 }
+# Which build this is (shown by the one-click test scripts).
+$rev = (git -C $root rev-parse --short HEAD) + $(if (git -C $root status --porcelain) { ' (+ local changes)' } else { '' })
+"T9Ime $Milestone test package`r`ncommit $rev`r`nbuilt $(Get-Date -Format 'yyyy-MM-dd HH:mm')" | Set-Content -Encoding ascii "$stage\VERSION.txt"
 New-Item -ItemType Directory -Force "$stage\sdk" | Out-Null
 Copy-Item "$root\src\ctl\t9ctl.h", "$root\samples\TestHost\cs\T9Ctl.cs" "$stage\sdk"
 # Data is architecture independent. robocopy /COPY:DAT keeps timestamps.
