@@ -3,7 +3,7 @@
 新会话先读本文件、`Docs/STATUS.md`（进度与待解决问题）和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；触屏下的 4 个问题已修复（注入触摸 + Win11 / Win7 触屏真实手指复测通过），见 `Docs/STATUS.md`。下一步：M6 托盘、设置、词库。
+M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；触屏下的 4 个问题已修复（注入触摸 + Win11 / Win7 触屏真实手指复测通过），见 `Docs/STATUS.md`。M6（托盘、设置窗口、简繁/模糊音/候选个数、词库导入导出清空、重新部署）已完成，待 Win7 触屏测试（`Docs/testing/M6-checklist.md`）。下一步：M7 安装包与兼容矩阵。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -36,7 +36,8 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - 遇到 API 行为不确定，先在 `tests/probes/` 写最小复现，不要猜。
 
 ## 已知陷阱
-- librime 的 maintenance 按文件 mtime 判断是否重建；zip（2 秒精度、本地时区）解压后会触发约 7 s 的重建。因此 **RimeEngine 默认不跑 maintenance**（`Options::maintenance=false`），直接用预部署数据。代价：用户改配置后必须显式重新部署；升级时要清理用户目录 `build/`（staging 会遮蔽新的预部署数据）——M6 处理。
+- librime 的 maintenance 按文件 mtime 判断是否重建；zip（2 秒精度、本地时区）解压后会触发约 7 s 的重建。因此 **RimeEngine 默认不跑 maintenance**（`Options::maintenance=false`），直接用预部署数据。改设置（模糊音、候选个数）时由 `input_settings` 写用户目录的 `*.custom.yaml` 并 `RimeEngine::Redeploy`；`t9ime.deployed` 戳记检测升级后过期的 user/build（无定制则删除，有定制则重新部署）。
+- 测试脚本不要跨进程发送带指针参数的控件消息（TCM_GETITEMRECT、伪造 WM_NOTIFY 等）：目标进程会往自己地址空间的无效地址读写而崩溃。
 - 面板英文模式是 QWERTY 全键盘，字母直接上屏，不经引擎（密码框也用它）；中文九宫格布局按 `Docs/T9_2.png`（用户定稿），外观与英文键盘参照 `Docs/T9.jpg`、`Docs/T9_ABC.jpg`。
 - 英文九键是独立方案 `t9_eng`（面板已不用，仅 t9repl 回归）（`data/custom/t9_eng.schema.yaml`，xlit 数字码，单独 prism）。不要把 melt_eng 挂进 t9：非主翻译器的 prism 不会被部署，而且 derive 会让英文 prism 膨胀。
 - `RimeContext.composition.cursor_pos/sel_*` 是 preedit 的 **UTF-8 字节偏移**。

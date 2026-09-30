@@ -11,8 +11,8 @@
 | M2 | 触摸面板（D2D，九宫格/数字/符号，候选栏） | 完成 |
 | M3 | TIP（TSF）物理键盘拼音、TIP 内候选窗、Host 管道 | 完成 |
 | M4 | 面板经 TIP 推送上屏、InputScope、自动弹出/隐藏、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、讯飞风格布局 | 完成，Win7 触屏实测通过 |
-| M5 | T9Ctl.dll / t9ctl.exe / TestHost（C++、C#）、控制管道、可见性通知、IMM32 兼容 | 功能完成；**触屏下有下列问题** |
-| M6 | 托盘、设置窗口、词库 | 未开始 |
+| M5 | T9Ctl.dll / t9ctl.exe / TestHost（C++、C#）、控制管道、可见性通知、IMM32 兼容 | 完成；触屏 4 个问题已修复，Win11 / Win7 触屏实测通过 |
+| M6 | 托盘（中/英图标、菜单）、设置窗口（键盘/输入/词库）、简繁、模糊音、候选个数、词库导入导出清空、重新部署 | 完成（Win11 自动化测试通过），待 Win7 触屏测试（`Docs/testing/M6-checklist.md`） |
 | M7 | 安装包与兼容矩阵 | 未开始 |
 
 自动化测试（开发机 Win11，鼠标 + 注入）：单元、回归、Win7 导入检查、8 项端到端（panel、tip、push、autoshow、switch、ctl、imm、touch）全部通过；Win7 虚拟机（vmrun）上前 7 项也全部通过（touch 需要 InjectTouchInput，Win7 跳过）。touch 用注入触摸覆盖下列 4 个问题；**真实手指复测见各条状态**。

@@ -286,3 +286,17 @@
 - 第一次 Win7 复测报告问题 2、4 仍在：原因是 Win7 上仍加载着旧的 T9Tip.dll（运行中的程序不会换 DLL）。改用 `start_m5_test.bat`（新目录注册、先关测试程序）后，用户确认所有测试符合预期（问题 1–4 与 M5 清单）。
 - CLAUDE.md 已知陷阱记下：真机复测务必用启动脚本在新目录注册，t9diag touch 行有 `on=` 即为新版 TIP。
 - 包内 TestHost.CS.exe 本次由 v4 csc 编译（本机 .NET 3.5 待重启后生效）。
+
+## 2026-09-30 — M6：托盘、设置窗口、词库
+
+- 用户决定：设置窗口用标准 Win32 控件放大适配触摸；设置项按建议全做。
+- **引擎**：`RimeEngine::Redeploy`（全量 maintenance 编译到 user/build）、`ExportUserDict` / `ImportUserDict`（levers API）、`ClearUserDict`（librime 初始化期间一直打开用户库，故 Finalize → 删除 `rime_ice.userdb` → Initialize）。实测：有会话打开时导出也可用；清空后导出返回 -1（无库）。
+- **输入设置**（`src/host/app/input_settings.*`，panel.ini `[input]`）：简繁是运行时开关 `traditionalization`（两方案共用：t9 `__include` 了 rime_ice），不需部署；模糊音与物理键盘候选个数写入用户目录的 `t9.custom.yaml` / `rime_ice.custom.yaml`（= 包内补丁 + 设置，文件头有生成标记），需要重新部署。t9 的模糊规则必须插在"九宫格数字映射"之前（之后插入只作用于字母拼写，数字码不会派生）；rime_ice 的插在最前。
+- **探测结论**：包里没有 `*.dict.yaml` 源文件，但重新部署能从已编译的 table 重建 prism（t9.prism.bin 206 KB → 219 KB），"source file does not exist" 的日志可忽略；n = l 后 54426（lihao）首选"你好"。
+- **过期数据**：`t9ime.deployed` 记录包内编译数据（大小 + 时间）与定制文件内容；启动时不一致（升级后）则重新部署；没有定制时删除 user/build（避免旧编译数据遮住新包的预部署数据——CLAUDE.md 已知陷阱）。
+- **引擎线程**：`Maintain` 关闭全部会话执行（部署、词库）后重开面板会话，TIP 会话在下一次请求时重建；期间 TIP 请求超时 → 按键透传。`SetOption` 对所有会话生效（入队不等待，避免部署期间卡 UI）；`DeployOnStart`。
+- **设置窗口**（`settings_window.*`）：键盘 / 输入 / 词库三页，字号放大、行高约 44 DIP，按显示器 DPI 缩放；结果（部署、导出条数等）显示在底部状态行，托盘发起的显示为气泡。`T9Host --open-settings`（已运行时让现有实例打开）。
+- **托盘**：显示/隐藏、停靠、设置…、重新部署、退出；图标为"中"（蓝）/"英"（灰），随面板文本模式变化。
+- **面板**：主题设置（跟随系统/浅/深，命令行 `--theme` 启动时优先）、大小预设（小 340×255、中 400×300、大 520×390 DIP，底边中点不动）。
+- **测试**：单元（词库导出/清空/导入、定制生成、真实部署后 54426→你好、恢复默认删除编译数据）；`e2e_settings` 用窗口消息驱动设置窗口、面板按键用投递点击（不移动鼠标）：模糊音部署生效、繁体"中國"、主题/大小/输入设置保存。
+- 调试教训：测试脚本跨进程发送带指针的控件消息（TCM_GETITEMRECT、伪造 WM_NOTIFY）会让 T9Host 往自己地址空间的无效地址写 → 崩溃（0xC000041D）。只发不带指针的消息或投递鼠标点击。
