@@ -4,8 +4,8 @@
 
 #include <windows.h>
 
-#include <functional>
 #include <deque>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <string>
@@ -144,6 +144,10 @@ class PanelWindow {
   void CheckLanguage();  // hidden because this application went to the background: show on its return
   std::string last_focus_;  // test hook: last focus event, for the layout dump  // shown by a focus change (then also hidden by one)
   std::mutex focus_mutex_;
+  // Diagnostics (t9diag): the last pointer events on the panel, e.g. to see
+  // why a touch long press did not fire on a device. Guarded by focus_mutex_.
+  std::deque<std::string> pointer_log_;
+  void TracePointer(const char* what, UINT32 id, float x = 0, float y = 0);
   std::deque<FocusEvent> focus_events_;
   HWND hwnd_ = nullptr;
   UINT dpi_ = 96;

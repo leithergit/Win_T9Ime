@@ -128,6 +128,10 @@ std::wstring PanelWindow::Describe() {
                    L" always_show=" + (settings_.always_show ? L"1" : L"0") +
                    L" show_on_switch=" + (settings_.show_on_switch ? L"1" : L"0") + L"\n";
   s += L"last focus event: " + Utf8ToWide(last_focus_) + L"\n";
+  if (!pointer_log_.empty()) {
+    s += L"recent pointer events (ms, event, id, x, y):\n";
+    for (const std::string& line : pointer_log_) s += L"  " + Utf8ToWide(line) + L"\n";
+  }
   return s;
 }
 
@@ -344,6 +348,10 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
       PointerCancel(compat::PointerId(wp));
       return 0;
 
+    case compat::kWmTabletQuerySystemGestureStatus:  // Windows 7 pen / touch service
+      // No press-and-hold right click (it takes over a held finger, so key
+      // long presses never fire), no flicks, no tap feedback.
+      return compat::kTabletGestureOff;
     case WM_TOUCH:
       if (HandleTouch(wp, lp)) return 0;
       break;
@@ -410,6 +418,14 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
   return DefWindowProcW(hwnd_, msg, wp, lp);
 }
 
+void PanelWindow::TracePointer(const char* what, UINT32 id, float x, float y) {
+  char line[96];
+  sprintf_s(line, "%llu %s id=%u %.0f,%.0f", GetTickCount64() % 100000, what, id, x, y);
+  std::lock_guard lock(focus_mutex_);
+  pointer_log_.push_back(line);
+  while (pointer_log_.size() > 40) pointer_log_.pop_front();
+}
+
 bool PanelWindow::HandleTouch(WPARAM wp, LPARAM lp) {
   const UINT count = LOWORD(wp);
   std::vector<TOUCHINPUT> inputs(count);
@@ -442,6 +458,7 @@ void PanelWindow::PointerDown(UINT32 id, POINT screen) {
   float x, y;
   ScreenToDip(screen, &x, &y);
   const Element* e = HitTest(layout_, x, y);
+  TracePointer(e ? "down" : "down-miss", id, x, y);
   if (!e) return;
   Track t;
   t.key = ElementKey::Of(*e);
@@ -492,6 +509,7 @@ void PanelWindow::PointerMove(UINT32 id, POINT screen) {
     const float total = horizontal ? x - t.x0 : y - t.y0;
     if (!t.scrolling && std::fabs(total) > kScrollSlop) {
       t.scrolling = true;
+      TracePointer("scroll", id, x, y);
       if (id == long_press_id_) KillTimer(hwnd_, kLongPressTimer);
     }
     if (t.scrolling) {
@@ -509,7 +527,10 @@ void PanelWindow::PointerMove(UINT32 id, POINT screen) {
       }
     }
     t.inside = inside || t.swipe_clear;
-    if (!t.inside && id == long_press_id_) KillTimer(hwnd_, kLongPressTimer);
+    if (!t.inside && id == long_press_id_) {
+      KillTimer(hwnd_, kLongPressTimer);
+      TracePointer("slid-off", id, x, y);
+    }
   }
   t.lx = x;
   t.ly = y;
@@ -521,6 +542,7 @@ void PanelWindow::PointerUp(UINT32 id, POINT screen) {
   if (it == tracks_.end()) return;
   const Track t = it->second;
   tracks_.erase(it);
+  TracePointer(t.long_fired ? "up-after-long" : "up", id, t.lx, t.ly);
   if (id == long_press_id_) {
     KillTimer(hwnd_, kLongPressTimer);
     KillTimer(hwnd_, kRepeatTimer);
@@ -537,6 +559,7 @@ void PanelWindow::PointerUp(UINT32 id, POINT screen) {
 }
 
 void PanelWindow::PointerCancel(UINT32 id) {
+  if (tracks_.count(id)) TracePointer("cancel", id);
   if (tracks_.erase(id) && id == long_press_id_) {
     KillTimer(hwnd_, kLongPressTimer);
     KillTimer(hwnd_, kRepeatTimer);
@@ -548,11 +571,13 @@ void PanelWindow::PointerCancel(UINT32 id) {
 void PanelWindow::OnTimer(UINT_PTR timer) {
   auto it = tracks_.find(long_press_id_);
   if (it == tracks_.end() || !it->second.inside || it->second.scrolling) {
+    if (timer == kLongPressTimer) TracePointer(it == tracks_.end() ? "long-no-track" : "long-skipped", long_press_id_);
     KillTimer(hwnd_, timer);
     return;
   }
   if (timer == kLongPressTimer) {
     KillTimer(hwnd_, kLongPressTimer);
+    TracePointer("long-press", long_press_id_, it->second.lx, it->second.ly);
     LongPress(it->second);
   } else if (timer == kRepeatTimer) {
     Execute(Action::kBackspace, -1, {}, {});

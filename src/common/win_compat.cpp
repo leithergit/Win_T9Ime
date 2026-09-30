@@ -67,13 +67,10 @@ void DisableTouchFeedback(HWND hwnd) {
     // FEEDBACK_TOUCH_CONTACTVISUALIZATION .. FEEDBACK_GESTURE_PRESSANDTAP
     for (int type : {1, 3, 4, 5, 6, 7, 8, 9, 10, 11}) fn(hwnd, type, 0, sizeof(off), &off);
   }
-  // Windows 7 (and older touch stacks): no press-and-hold right click, no flicks.
-  constexpr DWORD kDisablePressAndHold = 0x00000001;
-  constexpr DWORD kDisableFlicks = 0x00010000;
-  constexpr DWORD kDisableFlickFallback = 0x00040000;
+  // Windows 7 (and older touch stacks): no press-and-hold right click, no
+  // flicks, no tap feedback (the window also answers WM_TABLET_QUERYSYSTEMGESTURESTATUS).
   SetPropW(hwnd, L"MicrosoftTabletPenServiceProperty",
-           reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(kDisablePressAndHold | kDisableFlicks |
-                                                           kDisableFlickFallback)));
+           reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(kTabletGestureOff)));
 }
 
 UINT DpiForWindow(HWND hwnd) {

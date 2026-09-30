@@ -39,6 +39,10 @@ bool GetPointerType(UINT32 pointer_id, DWORD* type);
 // Disables system touch visuals (contact circles, press-and-hold) for a window.
 // Windows 8+: SetWindowFeedbackSetting; Windows 7: tablet property.
 void DisableTouchFeedback(HWND hwnd);
+// Windows 7 tablet service flags (tpcshrd.h): TABLET_DISABLE_PRESSANDHOLD,
+// _PENTAPFEEDBACK, _PENBARRELFEEDBACK, _FLICKS, _FLICKFALLBACKKEYS.
+constexpr DWORD kTabletGestureOff = 0x00000001 | 0x00000008 | 0x00000010 | 0x00010000 | 0x00100000;
+constexpr UINT kWmTabletQuerySystemGestureStatus = 0x02CC;
 
 // Effective DPI of a window: GetDpiForWindow (10+), GetDpiForMonitor (8.1+),
 // otherwise the system DPI.
