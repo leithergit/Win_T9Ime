@@ -120,6 +120,25 @@ HKL HklOf(const TF_INPUTPROCESSORPROFILE& p) {
 
 bool OnCallingThread(HWND hwnd) { return GetWindowThreadProcessId(hwnd, nullptr) == GetCurrentThreadId(); }
 
+// The keyboard is shown for the calling application: when the caller owns the
+// foreground window (a button click in its UI), switch it to T9Ime as well, so
+// the keyboard's input goes through T9Ime and the input indicator says so.
+void ActivateForCaller() {
+  HWND fg = GetForegroundWindow();
+  if (!fg || !OnCallingThread(fg)) return;  // e.g. t9ctl.exe in a console, or a worker thread
+  ComScope com;
+  ITfInputProcessorProfileMgr* mgr = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
+    return;
+  }
+  TF_INPUTPROCESSORPROFILE active = {};
+  const bool already = SUCCEEDED(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &active)) &&
+                       active.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR && IsEqualCLSID(active.clsid, kClsidT9Tip);
+  mgr->Release();
+  if (!already) ActivateProfile(T9Profile(), TF_IPPMF_FORPROCESS);
+}
+
 }  // namespace
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
@@ -174,6 +193,7 @@ BOOL T9_API T9_Deactivate(HWND hwnd) {
 
 BOOL T9_API T9_ShowKeyboard(int mode) {
   if (mode != T9_MODE_KEEP && !ValidMode(mode)) return FALSE;
+  ActivateForCaller();
   ipc::Writer w(ipc::MsgType::kCtlShow);
   if (mode != T9_MODE_KEEP) w.U32(ipc::kTagMode, static_cast<uint32_t>(mode));
   return Call(std::move(w), true);
@@ -184,7 +204,12 @@ BOOL T9_API T9_HideKeyboard(void) {
   return !T9_IsKeyboardVisible();  // no host: nothing to hide
 }
 
-BOOL T9_API T9_ToggleKeyboard(void) { return Call(ipc::Writer(ipc::MsgType::kCtlToggle), true); }
+BOOL T9_API T9_ToggleKeyboard(void) {
+  State s;
+  if (!Call(ipc::Writer(ipc::MsgType::kCtlToggle), true, &s)) return FALSE;
+  if (s.visible) ActivateForCaller();
+  return TRUE;
+}
 
 BOOL T9_API T9_IsKeyboardVisible(void) {
   State s;

@@ -39,7 +39,9 @@ BOOL T9_API T9_IsInstalled(void);
 BOOL T9_API T9_Activate(HWND hwnd);
 BOOL T9_API T9_Deactivate(HWND hwnd);
 
-/* Show / hide the touch keyboard. `mode`: T9_MODE_*. */
+/* Show / hide the touch keyboard. `mode`: T9_MODE_*. Called on the thread
+ * that owns the foreground window (e.g. from a button handler), showing also
+ * switches that application to T9Ime. */
 BOOL T9_API T9_ShowKeyboard(int mode);
 BOOL T9_API T9_HideKeyboard(void);
 BOOL T9_API T9_ToggleKeyboard(void);

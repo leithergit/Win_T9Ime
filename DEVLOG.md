@@ -230,3 +230,10 @@
 - **D2（Win7）**：Win7 用语言栏 / Ctrl+Shift 切到其他语言时不一定立即调用 TIP 的 `Deactivate`，先来的是 `ITfActiveLanguageProfileNotifySink::OnActivated(本 TIP, FALSE)`。现在两处都上报"停用"（FocusOut + kFocusDeactivated），Host 立即隐藏。Win11 上 e2e 通过，Win7 待触屏虚拟机复测。
 - **D4**：因前台程序切换而隐藏的键盘记住其所属进程，该程序回到前台时重新显示；主动隐藏（隐藏键、T9Ctl、切换输入法）不会恢复。
 - Host 诊断增加 `engine: ready / warming up`；e2e 启动 Host 后等引擎预热完成再输入（预热期间首批按键按设计直接放行，imm e2e 因此偶发）。
+
+## 2026-09-30 — D5：程序显示键盘时切到 T9Ime；D2 兜底
+
+- 复测：D2 仍不符合；新增 D5（TestHost 点"显示键盘"后输入法状态应变为 T9）不符合。二者同源：TestHost 并未使用 T9Ime，切换输入法时没有 T9Ime 的 TIP 事件可用。
+- **D5**：`T9_ShowKeyboard` / `T9_ToggleKeyboard`（变为可见时）在调用线程拥有前台窗口时（按钮处理函数里），顺带把该程序切到 T9Ime（FORPROCESS；已是 T9Ime 则不动）。t9ctl.exe 在控制台里调用时不切。同时键盘已显示时，"切到 T9Ime"的焦点事件不再改布局（否则程序指定的数字布局会被重置为中文）。
+- **D2 兜底**：面板可见期间每 400 ms 查看前台线程的输入语言（`GetKeyboardLayout`），切到非中文语言即隐藏——覆盖 T9Ime 并未激活的程序；T9Ime 激活时仍由 TIP 的停用上报处理。
+- ctl e2e 增加 TestHost 场景（BM_CLICK"数字" → 数字布局、TestHost 物理键盘出中文、deactivate 后键盘隐藏）；x64 七项 e2e 全过。

@@ -138,7 +138,10 @@ class PanelWindow {
   AutoShowSettings settings_;
   bool auto_shown_ = false;
   DWORD owner_pid_ = 0;    // application the visible panel belongs to (0: not bound yet)
-  DWORD restore_pid_ = 0;  // hidden because this application went to the background: show on its return
+  DWORD restore_pid_ = 0;
+  HWND watched_window_ = nullptr;  // CheckLanguage: foreground window and its input language
+  HKL watched_hkl_ = nullptr;
+  void CheckLanguage();  // hidden because this application went to the background: show on its return
   std::string last_focus_;  // test hook: last focus event, for the layout dump  // shown by a focus change (then also hidden by one)
   std::mutex focus_mutex_;
   std::deque<FocusEvent> focus_events_;

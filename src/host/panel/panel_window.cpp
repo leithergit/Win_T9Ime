@@ -18,6 +18,8 @@ constexpr wchar_t kClassName[] = L"T9Ime.Panel";
 constexpr UINT_PTR kLongPressTimer = 1;
 constexpr UINT_PTR kRepeatTimer = 2;
 constexpr UINT_PTR kAutoHideTimer = 3;
+constexpr UINT_PTR kLanguageTimer = 4;  // visible: watch the foreground application's input language
+constexpr UINT kLanguagePollMs = 400;
 constexpr UINT kAutoHideMs = 300;  // focus may just be moving to another field
 constexpr ULONGLONG kCapsLockMs = 400;  // second shift tap within this time: caps lock
 constexpr UINT kLongPressMs = 450;
@@ -147,7 +149,13 @@ void PanelWindow::OnFocusEvents() {
     last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + (e.switched ? " switched" : "") +
                   " scopes=";
     for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
-    // Switching to T9Ime starts over with the default (Chinese nine-key) layout.
+    // Switching to T9Ime starts over with the default (Chinese nine-key)
+    // layout - unless the panel is already up (an application showed it with
+    // a layout and switched to T9Ime at the same time).
+    if (e.switched && visible()) {
+      KillTimer(hwnd_, kAutoHideTimer);
+      continue;
+    }
     if (e.switched) text_mode_ = Mode::kChinese;
     const AutoDecision d = DecideOnFocus(e, settings_, text_mode_, compat::Os().AtLeastWin10());
     {
@@ -186,6 +194,34 @@ void PanelWindow::Show() {
   SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
   InvalidateRect(hwnd_, nullptr, FALSE);
+  watched_hkl_ = nullptr;
+  SetTimer(hwnd_, kLanguageTimer, kLanguagePollMs, nullptr);
+}
+
+// The user switched the foreground application to another language (language
+// bar, Ctrl+Shift, Win+Space) while the panel is up: it no longer applies.
+// Covers applications where T9Ime was not active, so no TIP reports it.
+// Switching to the T9Ime language (Chinese) does not count.
+void PanelWindow::CheckLanguage() {
+  if (!visible()) {
+    KillTimer(hwnd_, kLanguageTimer);
+    return;
+  }
+  HWND fg = GetForegroundWindow();
+  DWORD pid = 0;
+  const DWORD tid = GetWindowThreadProcessId(fg, &pid);
+  if (!tid || pid == GetCurrentProcessId()) return;
+  const HKL hkl = GetKeyboardLayout(tid);
+  if (fg != watched_window_) {  // another window: start over
+    watched_window_ = fg;
+    watched_hkl_ = hkl;
+    return;
+  }
+  const bool changed = watched_hkl_ && hkl != watched_hkl_;
+  watched_hkl_ = hkl;
+  if (changed && LOWORD(reinterpret_cast<ULONG_PTR>(hkl)) != MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)) {
+    Hide();
+  }
 }
 
 void PanelWindow::Dock() {
@@ -221,6 +257,7 @@ void PanelWindow::OnForegroundChanged(HWND foreground) {
 }
 
 void PanelWindow::Hide() {
+  KillTimer(hwnd_, kLanguageTimer);
   auto_shown_ = false;
   owner_pid_ = 0;
   restore_pid_ = 0;  // hidden on purpose (or re-armed by OnForegroundChanged)
@@ -315,6 +352,10 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
       if (wp == kAutoHideTimer) {
         KillTimer(hwnd_, kAutoHideTimer);
         if (tracks_.empty()) Hide();  // not while a finger is on the panel
+        return 0;
+      }
+      if (wp == kLanguageTimer) {
+        CheckLanguage();
         return 0;
       }
       OnTimer(wp);

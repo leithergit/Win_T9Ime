@@ -186,6 +186,40 @@ def main() -> int:
             other.wait(5)
         except subprocess.TimeoutExpired:
             other.kill()
+        user32.PostMessageW(hwnd, pe.WM_CLOSE, 0, 0)
+        target.wait(5)
+
+        # D5 / D2 with the C++ sample: its "数字" button shows the number
+        # keyboard and switches the application to T9Ime; switching it to
+        # another input method hides the keyboard.
+        testhost = subprocess.Popen([str(Path(args.ctl).resolve().with_name('TestHost.exe'))])
+        th = pe.wait_for(lambda: user32.FindWindowW(None, 'T9Ime TestHost (C++)'), what='TestHost')
+        th_edit = pe.wait_for(lambda: user32.FindWindowExW(th, None, 'Edit', None), what='TestHost edit')
+        time.sleep(0.5)
+        user32.GetWindowRect(th_edit, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        pe.wait_for(lambda: user32.GetForegroundWindow() == th, what='TestHost in front')
+        time.sleep(1.5)
+        button = user32.FindWindowExW(th, None, 'Button', '数字')
+        user32.SendMessageW(button, 0x00F5, 0, 0)  # BM_CLICK: runs on TestHost's UI thread
+        pe.wait_for(lambda: (panel.read() or {}).get('visible'), timeout=5, what='panel shown by TestHost')
+        time.sleep(0.8)
+        check(panel.has(pe.TEXT, label='7') and not panel.has(pe.KEY), 'TestHost: number keyboard shown')
+        user32.SendMessageW(th_edit, 0x0C, 0, ctypes.c_wchar_p(''))
+        te.type_keys('nihao')
+        te.tap(te.VK['space'])
+        time.sleep(0.5)
+        check(pe.window_text(th_edit) == '你好', f'TestHost was switched to T9Ime (got {pe.window_text(th_edit)!r})')
+        code, _ = ctl('deactivate', str(th))
+        ok = True
+        try:
+            pe.wait_for(lambda: not (panel.read() or {}).get('visible'), timeout=5, what='panel hidden')
+        except AssertionError:
+            ok = False
+        check(code == 0 and ok, 'switching TestHost to another input method hides the keyboard')
+        user32.PostMessageW(th, pe.WM_CLOSE, 0, 0)
+        testhost.wait(5)
+        target = None
     finally:
         if target:
             user32.PostMessageW(user32.FindWindowW(None, 'T9Ime Other') or 0, pe.WM_CLOSE, 0, 0)
