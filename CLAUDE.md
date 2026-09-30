@@ -3,7 +3,7 @@
 新会话先读本文件、`Docs/STATUS.md`（进度与待解决问题）和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；触屏下的 4 个问题已修复（注入触摸 + Win11 触屏真实手指复测通过；Win7 触屏机待测），见 `Docs/STATUS.md`。下一步：M6 托盘、设置、词库。
+M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；触屏下的 4 个问题已修复（注入触摸 + Win11 / Win7 触屏真实手指复测通过），见 `Docs/STATUS.md`。下一步：M6 托盘、设置、词库。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -58,3 +58,4 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - 面板的所有输出（上屏、退格/回车透传、直接符号）都经引擎线程的 Passthrough 排队，保证顺序；不要在 UI 线程直接 SendInput。
 - `_WIN32_WINNT=0x0601` 下 SDK 不声明 WM_POINTER/WM_DPICHANGED 等，常量在 `src/common/win_compat.h`。
 - 命令行输出中文用 `py -3 C:\Users\leith\.claude\tools\enc.py`，避免 cp936 乱码。
+- 真机复测新包时，已在运行的程序（TestHost、资源管理器等）仍用内存里的旧 T9Tip.dll，原地覆盖解压也可能注册到被占用的旧文件：先关掉测试程序，用 `tools/touch_test/start_m5_test.bat`（注销旧版、复制到新目录再注册、录制 t9diag）。t9diag 的 touch 行有 `on=` 即为新版 TIP（2026-09-30 Win7 复测曾因此误报未修复）。
