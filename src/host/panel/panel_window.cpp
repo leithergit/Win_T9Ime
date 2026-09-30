@@ -561,6 +561,7 @@ void PanelWindow::OnTimer(UINT_PTR timer) {
 
 void PanelWindow::LongPress(Track& t) {
   t.long_fired = true;
+  InvalidateRect(hwnd_, nullptr, FALSE);  // the key preview switches to the long-press character
   switch (t.action) {
     case Action::kBackspace:
       Execute(Action::kBackspace, -1, {}, {});
@@ -801,11 +802,14 @@ void PanelWindow::ApplyScroll(Region region, float delta) {
 void PanelWindow::Paint() {
   PAINTSTRUCT ps;
   BeginPaint(hwnd_, &ps);
-  std::vector<ElementKey> pressed;
+  std::vector<ElementKey> pressed, long_pressed;
   for (const auto& [id, t] : tracks_) {
-    if (t.action != Action::kHandle && t.inside && !t.scrolling) pressed.push_back(t.key);
+    if (t.action != Action::kHandle && t.inside && !t.scrolling) {
+      pressed.push_back(t.key);
+      if (t.long_fired) long_pressed.push_back(t.key);
+    }
   }
-  renderer_.Render(hwnd_, dpi_, layout_, theme_, pressed);
+  renderer_.Render(hwnd_, dpi_, layout_, theme_, pressed, long_pressed);
   EndPaint(hwnd_, &ps);
   if (!options_.dump_layout.empty()) DumpLayout();
 }

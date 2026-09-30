@@ -250,3 +250,8 @@
 - 复测（00dcbce）：D2、D5 都不符合。经 Host 切换（会话级 profile + WM_INPUTLANGCHANGEREQUEST）在 Win7 上只能换语言：TestHost 用的是另一个中文输入法（同为 0804）时什么都不会发生，T9Ime 没激活，D5 失败，D2 也就没有停用可报；400 ms 语言轮询也看不到变化（语言没变）。
 - 修复：调用者自己的窗口（按钮处理函数里）重新在调用线程 `ActivateProfile(FORPROCESS)`——Win7 上同语言输入法之间切换只有这条路；COM 若由我们初始化就保持初始化，不再 `CoUninitialize`（推断此前 D2 失败的原因：反初始化把刚激活的 T9Ime 又关掉了，状态图标仍是 T9，但已没有实例上报停用）。其他窗口仍经 Host。
 - 诊断：`start_m5_test.bat` 录制 `results\m5_watch.txt`（t9diag --watch 600），焦点事件带 `deactivated` 标记，D2/D5 再失败时据此定位。
+
+## 2026-09-30 — D2、D5 通过；长按预览显示小字
+
+- 触屏 Win7 虚拟机复测（5ba6753）：D2、D5 通过。
+- 改进：英文键盘长按字母键时，按键上方的放大预览从主字母换成实际输入的小字（如长按 q 显示蓝色的 1）；长按触发时立即重绘。

@@ -38,8 +38,10 @@ class PanelRenderer {
   ~PanelRenderer();
 
   bool Initialize();
+  // `long_pressed`: pressed keys whose long press fired (the preview shows
+  // the character a long press types).
   void Render(HWND hwnd, UINT dpi, const Layout& layout, const Theme& theme,
-              const std::vector<ElementKey>& pressed);
+              const std::vector<ElementKey>& pressed, const std::vector<ElementKey>& long_pressed = {});
   void Resize(UINT width_px, UINT height_px);
   // Width of candidate text in DIPs.
   float MeasureCandidate(const std::wstring& text);

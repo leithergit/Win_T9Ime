@@ -211,7 +211,7 @@ ID2D1LinearGradientBrush* PanelRenderer::Gradient(const D2D1_COLOR_F& top, const
 }
 
 void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Theme& theme,
-                           const std::vector<ElementKey>& pressed) {
+                           const std::vector<ElementKey>& pressed, const std::vector<ElementKey>& long_pressed) {
   if (!EnsureTarget(hwnd, dpi)) return;
   target_->BeginDraw();
   target_->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -336,7 +336,8 @@ void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Them
   }
 
   // Key preview: the pressed QWERTY key, enlarged above the finger, so the
-  // user sees what is typed (passwords show only dots in the field).
+  // user sees what is typed (passwords show only dots in the field). After a
+  // long press it shows the small character that was typed instead.
   for (const Element& e : layout.elements) {
     if (e.action != Action::kLetter ||
         std::find(pressed.begin(), pressed.end(), ElementKey::Of(e)) == pressed.end()) {
@@ -350,7 +351,10 @@ void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Them
     target_->FillRoundedRectangle(D2D1::RoundedRect(bubble, kKeyRadius, kKeyRadius), brush_);
     brush_->SetColor(theme.accent);
     target_->DrawRoundedRectangle(D2D1::RoundedRect(bubble, kKeyRadius, kKeyRadius), brush_, 1.5f);
-    DrawText(e.label, preview_format_, bubble, theme.text);
+    const bool long_press =
+        std::find(long_pressed.begin(), long_pressed.end(), ElementKey::Of(e)) != long_pressed.end();
+    DrawText(long_press && !e.sublabel.empty() ? e.sublabel : e.label, preview_format_, bubble,
+             long_press ? theme.accent : theme.text);
   }
 
   if (target_->EndDraw() == D2DERR_RECREATE_TARGET) ReleaseTarget();
