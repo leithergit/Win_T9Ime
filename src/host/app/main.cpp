@@ -42,6 +42,7 @@ struct Args {
   panel::InputMode input = compat::HasPointerInput() ? panel::InputMode::kPointer : panel::InputMode::kTouch;
   bool show = false;
   bool single_instance = true;
+  bool background = false;  // started by a TIP: never disturb a running host
 };
 
 std::wstring ExeDir() {
@@ -92,6 +93,7 @@ Args ParseArgs() {
     else if (k == L"--show") a.show = true;
     else if (k == L"--no-single-instance") a.single_instance = false;
     else if (k == L"--always-show") a.always_show = true;
+    else if (k == L"--background") a.background = true;
     else if (k == L"--input") {
       const std::wstring v = next();
       a.input = v == L"mouse" ? panel::InputMode::kMouse
@@ -146,6 +148,7 @@ class HostApp {
     // the pipe (e.g. a test instance); the panel still works.
     server_ = std::make_unique<ipc::RequestServer>(engine_, focus_, args.pipe_name);
     if (!server_->Start()) server_.reset();
+    if (server_) server_->SetDiagnostics([this] { return panel_->Describe(); });
     events_ = std::make_unique<ipc::EventServer>(focus_, args.pipe_name.empty() ? L"" : args.pipe_name + L".evt");
     if (!events_->Start()) events_.reset();
     // Panel output goes to the focused TIP when there is one.
@@ -289,8 +292,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     const std::wstring name = L"Local\\T9Ime.Host." + UserSid();
     mutex = CreateMutexW(nullptr, TRUE, name.c_str());
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-      // Already running: ask it to show the panel.
-      PostMessageW(HWND_BROADCAST, HostApp::ActivateMessage(), 0, 0);
+      // Already running: ask it to show the panel (unless started by a TIP).
+      if (!args.background) PostMessageW(HWND_BROADCAST, HostApp::ActivateMessage(), 0, 0);
       if (mutex) CloseHandle(mutex);
       return 0;
     }

@@ -71,6 +71,11 @@ void EventServer::Serve(HANDLE pipe, uint64_t, HANDLE stop) {
 std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
   std::vector<uint8_t> out;
   const uint32_t seq = req.seq();
+  if (req.type() == MsgType::kDiagnostics) {
+    Writer w(MsgType::kAck, seq);
+    w.Str(kTagText, focus_.Describe() + (diagnostics_ ? diagnostics_() : std::wstring()));
+    return w.Finish();
+  }
   engine_.Invoke([&](EngineContext& ctx) {
     Session* s = ctx.Client(client);
     if (!s) {

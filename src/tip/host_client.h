@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <functional>
 #include <optional>
 
 #include "pipe.h"
@@ -26,6 +27,8 @@ class HostClient {
   // every reconnect (the events pipe must then be re-attached).
   uint32_t client_id() const { return client_id_; }
   uint32_t generation() const { return generation_; }
+  // Called on the calling (UI) thread right after a new connection is made.
+  void SetOnConnected(std::function<void()> f) { on_connected_ = std::move(f); }
 
  private:
   bool EnsureConnected();
@@ -38,6 +41,7 @@ class HostClient {
   DWORD backoff_ms_ = 500;
   uint32_t client_id_ = 0;
   uint32_t generation_ = 0;
+  std::function<void()> on_connected_;
 };
 
 }  // namespace t9ime::tip

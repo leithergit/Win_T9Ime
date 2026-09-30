@@ -16,3 +16,8 @@ add_executable(T9Host WIN32 app/main.cpp app/T9Host.manifest)
 target_link_libraries(T9Host PRIVATE t9panel shell32 ole32)
 t9_win7_subsystem(T9Host WINDOWS)
 add_dependencies(T9Host rime_data copy_rime_dll)
+# A registered development TIP relaunches T9Host at any time; move the running
+# executable aside instead of failing to link.
+add_custom_command(TARGET T9Host PRE_LINK
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/move_locked.py" "$<TARGET_FILE:T9Host>"
+  VERBATIM)

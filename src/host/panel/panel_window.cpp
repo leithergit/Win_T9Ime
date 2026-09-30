@@ -118,6 +118,15 @@ void PanelWindow::SaveSettings() {
   WritePrivateProfileStringW(L"panel", L"always_show", settings_.always_show ? L"1" : L"0", file);
 }
 
+std::wstring PanelWindow::Describe() {
+  std::lock_guard lock(focus_mutex_);
+  std::wstring s = L"panel: " + std::wstring(visible() ? L"visible" : L"hidden") +
+                   (auto_shown_ ? L" (auto-shown)" : L"") + L", auto_show=" + (settings_.auto_show ? L"1" : L"0") +
+                   L" always_show=" + (settings_.always_show ? L"1" : L"0") + L"\n";
+  s += L"last focus event: " + Utf8ToWide(last_focus_) + L"\n";
+  return s;
+}
+
 void PanelWindow::PostFocusEvent(FocusEvent e) {
   {
     std::lock_guard lock(focus_mutex_);
@@ -136,6 +145,13 @@ void PanelWindow::OnFocusEvents() {
     last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + " scopes=";
     for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
     const AutoDecision d = DecideOnFocus(e, settings_, text_mode_, compat::Os().AtLeastWin10());
+    {
+      std::lock_guard lock(focus_mutex_);
+      last_focus_ += d.action == AutoAction::kShow   ? " -> show"
+                     : d.action == AutoAction::kHide ? " -> hide"
+                                                     : " -> none";
+      if (e.focus_in) last_focus_ += " exe=" + WideToUtf8(e.exe);
+    }
     switch (d.action) {
       case AutoAction::kShow:
         KillTimer(hwnd_, kAutoHideTimer);

@@ -59,6 +59,8 @@ class PanelWindow {
   // Focus changes reported by the TIPs; callable from any thread.
   void PostFocusEvent(FocusEvent e);
   AutoShowSettings& settings() { return settings_; }
+  // Human-readable state for t9diag (any thread).
+  std::wstring Describe();
   void SaveSettings();
   bool visible() const { return hwnd_ && IsWindowVisible(hwnd_); }
 

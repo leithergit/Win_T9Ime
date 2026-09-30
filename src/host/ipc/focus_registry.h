@@ -44,6 +44,8 @@ class FocusRegistry {
   // Called (on the calling pipe thread) after every focus change with the
   // client's state (`focused` false = focus out).
   void SetListener(std::function<void(const FocusInfo&)> listener);
+  // Human-readable state for t9diag.
+  std::wstring Describe() const;
 
  private:
   struct Client {

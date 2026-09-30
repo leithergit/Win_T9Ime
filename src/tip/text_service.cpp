@@ -17,6 +17,7 @@ namespace {
 
 constexpr DWORD kCmodeNative = 0x0001;  // IME_CMODE_NATIVE
 constexpr UINT kPushMessage = WM_APP + 1;
+constexpr UINT kTouchTapMessage = WM_APP + 2;  // touch on the focused window
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 // {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
@@ -136,7 +137,6 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     client_id_ = id;
     activate_flags_ = flags;
 
-    touch_.Install();
     ui_.Attach(new CandidateUI());
     ui_->SetCallbacks({[this](UINT index) { SelectCandidate(static_cast<int>(index)); }, [this] { Abort(); }});
     window_.SetCallbacks([this](int index) { SelectCandidate(index); }, [this](bool backward) { ChangePage(backward); });
@@ -152,6 +152,8 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     }
     message_window_ = CreateWindowExW(0, kMessageClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_module, nullptr);
     if (message_window_) SetWindowLongPtrW(message_window_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    touch_.Install(message_window_, kTouchTapMessage);
+    host_.SetOnConnected([this] { EnsureEvents(); });
 
     if (!AdviseSinks()) {
       Deactivate();
@@ -205,6 +207,7 @@ STDMETHODIMP TextService::Deactivate() {
     }
     composition_.Reset();
     active_context_.Reset();
+    host_.SetOnConnected(nullptr);
     host_.Disconnect();
     thread_mgr_.Reset();
     client_id_ = TF_CLIENTID_NULL;
@@ -593,10 +596,17 @@ void TextService::EnsureEvents() {
 }
 
 LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-  if (msg == kPushMessage) {
+  if (msg == kPushMessage || msg == kTouchTapMessage) {
     if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
       Guard([&] {
-        self->OnPushes();
+        if (msg == kPushMessage) {
+          self->OnPushes();
+        } else if (self->thread_mgr_) {
+          // Tapped the field that already had the focus: report it again (as
+          // touch: the press was just recorded) so the panel can pop up.
+          ComPtr<ITfDocumentMgr> focus;
+          if (SUCCEEDED(self->thread_mgr_->GetFocus(&focus)) && focus) self->ReportFocus(focus.Get());
+        }
         return S_OK;
       });
     }

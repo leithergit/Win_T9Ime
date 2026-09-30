@@ -138,7 +138,11 @@ def main() -> int:
         time.sleep(1.0)
         check(not visible(panel), 'password field: panel hidden')
         pe.click(*center(text))
-        pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown again')
+        try:
+            pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown again')
+        except AssertionError:
+            print('  diag:', (panel.read() or {}).get('focus'))
+            raise
         check(has(panel, pe.KEY, '分词'), 'back to the text layout')
 
     def touch_scenario(panel, hwnd, edits):
@@ -146,18 +150,25 @@ def main() -> int:
         pe.click(*center(text))
         time.sleep(1.0)
         check(not visible(panel), 'mouse focus does not pop the panel up (default settings)')
-        pe.click(*center(edits[1]))  # move focus away first
-        time.sleep(0.5)
-        if not touch_tap(*center(text)):
-            print('SKIP touch: InjectTouchInput unavailable')
-            return
-        ok = False
-        try:
-            pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown by touch')
-            ok = True
-        except AssertionError:
-            pass
-        check(ok, 'touch focus pops the panel up')
+
+        def shown_by(tap_field, what):
+            if not touch_tap(*center(tap_field)):
+                print('SKIP touch: InjectTouchInput unavailable')
+                return
+            ok = False
+            try:
+                pe.wait_for(lambda: visible(panel), timeout=5, what=what)
+                ok = True
+            except AssertionError:
+                pass
+            check(ok, what + f' (last focus: {(panel.read() or {}).get("focus")!r})')
+
+        # The text field already has the focus: no focus change, still pops up.
+        shown_by(text, 'touch on the already focused field pops the panel up')
+        # Hide via a mouse click elsewhere (password field), then touch a new field.
+        pe.click(*center(edits[2]))
+        pe.wait_for(lambda: not visible(panel), timeout=5, what='panel hidden')
+        shown_by(edits[1], 'touch focus on another field pops the panel up')
 
     caps = user32.GetKeyState(0x14) & 1
     try:

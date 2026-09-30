@@ -64,6 +64,7 @@ bool HostClient::EnsureConnected() {
     if (pipe_.Call(hello.Finish(), &resp, kOtherTimeoutMs)) {
       client_id_ = ipc::Reader(resp.data(), resp.size()).U32Or(ipc::kTagClient, 0);
       ++generation_;
+      if (on_connected_) on_connected_();
       return true;
     }
   }
@@ -92,7 +93,9 @@ void HostClient::MaybeStartHost() {
         auto* p = static_cast<std::wstring*>(param);
         STARTUPINFOW si = {sizeof(si)};
         PROCESS_INFORMATION pi = {};
-        if (CreateProcessW(p->data(), nullptr, nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, nullptr, &si,
+        // --background: exit quietly if another TIP started the host first.
+        std::wstring cmd = L"\"" + *p + L"\" --background";
+        if (CreateProcessW(p->data(), cmd.data(), nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, nullptr, &si,
                            &pi)) {
           CloseHandle(pi.hThread);
           CloseHandle(pi.hProcess);

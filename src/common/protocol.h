@@ -32,6 +32,7 @@ enum class MsgType : uint16_t {
   kClearComposition = 7,
   kQueryState = 8,     // current state without input
   kSetAsciiMode = 9,   // value (IMM32 conversion mode / langbar)
+  kDiagnostics = 30,   // -> kAck with kTagValue text (t9diag)
   // TIP -> Host on the events pipe, once after connecting (-> no answer)
   kEventHello = 20,    // client (id from the kHello ack)
   // Host -> TIP on the events pipe
@@ -59,6 +60,7 @@ enum Tag : uint16_t {
   kTagInputScope = 13,   // repeated
   kTagTouch = 14,        // focus change caused by touch / pen
   kTagReadOnly = 15,
+  kTagText = 16,         // free text (diagnostics)
   // result fields
   kTagEaten = 30,
   kTagCommit = 31,

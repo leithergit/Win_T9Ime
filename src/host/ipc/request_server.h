@@ -3,6 +3,7 @@
 // the engine thread (EngineThread::Invoke), one rime_ice session per client.
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,8 @@ class RequestServer final : public PipeServer {
  public:
   // `pipe_name` defaults to PipeName(Endpoint::kRequest); tests pass their own.
   RequestServer(EngineThread& engine, FocusRegistry& focus, std::wstring pipe_name = {});
+  // Extra diagnostics text (panel state), called on pipe threads.
+  void SetDiagnostics(std::function<std::wstring()> f) { diagnostics_ = std::move(f); }
   ~RequestServer() override { Stop(); }
 
   bool Start() { return PipeServer::Start(name_); }
@@ -31,6 +34,7 @@ class RequestServer final : public PipeServer {
   EngineThread& engine_;
   FocusRegistry& focus_;
   std::wstring name_;
+  std::function<std::wstring()> diagnostics_;
 };
 
 // Events pipe: the host pushes panel output to the focused TIP. A client

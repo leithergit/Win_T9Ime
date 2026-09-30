@@ -135,3 +135,11 @@
 
 **下一步**
 - M5：T9Ctl.dll / t9ctl.exe / TestHost(C++/C#)、控制管道、IMM32 API（ImmSetOpenStatus / ImmSetConversionStatus）兼容验证。
+
+## 2026-09-30 — Win7 M4 首测反馈（面板不自动弹出）
+
+- 用户 Win7：T9Host 在运行、引擎正常，但手指点输入框面板不弹出（A1/A2 失败）。
+- 原因（分析）：① 测试窗口启动时焦点已在大输入框，点它不产生焦点变化 → 不上报；② Win7 按程序记住输入法，测试窗口里未必启用了 T9Ime（没有 TIP 就没有焦点上报）；③ Win7 触摸判定（钩子 + GetMessageExtraInfo）未经真机验证。
+- 修复：TIP 钩子发现触摸点中已有焦点的窗口时重新上报焦点（带触摸标志）；`target.bat` 以 T9Ime 启动测试窗口；Host 诊断请求 + `t9diag --watch` 实时记录焦点/触摸/弹出决定；事件管道在每次连上 Host 时附着（此前某些重连路径不附着，Chrome 中看到 NO-EVENTS）；TIP 以 `--background` 拉起 Host，已在运行时不再弹出面板；T9Host 也加链接前改名（开发机上会被 TIP 随时拉起）。
+- 待回收：新 M4 包 + watch.txt。
+- 偶发：autoshow e2e 曾有一次"返回文本框后未弹出"，随后 4 次全过，待观察。

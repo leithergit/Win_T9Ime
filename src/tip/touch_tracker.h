@@ -18,7 +18,10 @@ class TouchTracker {
   TouchTracker& operator=(const TouchTracker&) = delete;
   ~TouchTracker() { Uninstall(); }
 
-  void Install();  // on the thread-manager thread
+  // On the thread-manager thread. When a touch / pen press lands on the window
+  // that already has the keyboard focus (no focus change follows), `message`
+  // is posted to `notify` so the focus can be reported again as touch.
+  void Install(HWND notify, UINT message);
   void Uninstall();
   bool FocusFromTouch() const;
 

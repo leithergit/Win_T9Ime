@@ -3,6 +3,8 @@
 // request pipe exactly like the TIP does.
 //   t9diag.exe            (run from the package folder; output to the console)
 //   t9diag.exe > diag.txt
+//   t9diag.exe --watch 60   then print the host's focus / panel state for 60 s
+//                           whenever it changes (tap fields meanwhile)
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -131,7 +133,41 @@ void Pipe() {
 
 }  // namespace
 
-int wmain() {
+void Watch(int seconds) {
+  ipc::PipeClient c;
+  if (!c.Connect(ipc::PipeName(ipc::Endpoint::kRequest), 1000)) {
+    Line(L"watch: cannot connect to T9Host");
+    return;
+  }
+  Line(L"watching for " + std::to_wstring(seconds) + L" s - tap input fields now");
+  std::wstring last;
+  const ULONGLONG end = GetTickCount64() + static_cast<ULONGLONG>(seconds) * 1000;
+  while (GetTickCount64() < end) {
+    std::vector<uint8_t> resp;
+    if (!c.Call(ipc::Writer(ipc::MsgType::kDiagnostics).Finish(), &resp, 2000)) {
+      Line(L"watch: host stopped answering");
+      return;
+    }
+    const std::wstring text = ipc::Reader(resp.data(), resp.size()).StrOr(ipc::kTagText);
+    if (text != last) {
+      SYSTEMTIME t;
+      GetLocalTime(&t);
+      wchar_t stamp[32];
+      swprintf_s(stamp, L"--- %02d:%02d:%02d.%03d", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+      Line(stamp);
+      Line(text);
+      std::fflush(stdout);
+      last = text;
+    }
+    Sleep(200);
+  }
+}
+
+int wmain(int argc, wchar_t** argv) {
+  if (argc >= 2 && lstrcmpW(argv[1], L"--watch") == 0) {
+    Watch(argc >= 3 ? _wtoi(argv[2]) : 60);
+    return 0;
+  }
   const auto& os = compat::Os();
 #ifdef _WIN64
   const wchar_t* arch = L"x64";
@@ -147,5 +183,11 @@ int wmain() {
   Registration();
   Hosts();
   Pipe();
+  std::vector<uint8_t> resp;
+  ipc::PipeClient c;
+  if (c.Connect(ipc::PipeName(ipc::Endpoint::kRequest), 1000) &&
+      c.Call(ipc::Writer(ipc::MsgType::kDiagnostics).Finish(), &resp, 2000)) {
+    Line(ipc::Reader(resp.data(), resp.size()).StrOr(ipc::kTagText));
+  }
   return 0;
 }

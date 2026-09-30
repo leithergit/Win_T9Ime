@@ -72,6 +72,19 @@ start "" "%ARCH%\test_target.exe"
 endlocal
 '@ | Set-Content -Encoding ascii "$stage\panel.bat"
 
+# Test window with T9Ime already active in it (Windows 7 keeps one input
+# method per application, so switching elsewhere does not affect it).
+@'
+@echo off
+setlocal
+cd /d "%~dp0"
+set ARCH=x86
+if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set ARCH=x64
+if /i "%PROCESSOR_ARCHITEW6432%"=="AMD64" set ARCH=x64
+start "" "%ARCH%\test_target.exe" --activate-tip
+endlocal
+'@ | Set-Content -Encoding ascii "$stage\target.bat"
+
 # TIP registration (needs "Run as administrator"). 64-bit Windows registers both
 # DLLs so 32-bit applications work too.
 @'

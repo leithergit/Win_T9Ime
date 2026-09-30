@@ -20,6 +20,15 @@ struct LastPress {
   bool touch = false;
 };
 thread_local LastPress g_last;
+thread_local HWND g_notify = nullptr;
+thread_local UINT g_notify_message = 0;
+
+void Record(HWND target, bool touch) {
+  g_last = {GetTickCount64(), touch};
+  if (!touch || !g_notify) return;
+  HWND focus = GetFocus();
+  if (focus && (target == focus || IsChild(focus, target))) PostMessageW(g_notify, g_notify_message, 0, 0);
+}
 
 LRESULT CALLBACK GetMessageHook(int code, WPARAM wp, LPARAM lp) {
   if (code == HC_ACTION && wp == PM_REMOVE) {
@@ -28,12 +37,12 @@ LRESULT CALLBACK GetMessageHook(int code, WPARAM wp, LPARAM lp) {
       case WM_LBUTTONDOWN:
       case WM_RBUTTONDOWN:
       case WM_NCLBUTTONDOWN:
-        g_last = {GetTickCount64(), compat::IsMouseFromTouchOrPen()};
+        Record(m->hwnd, compat::IsMouseFromTouchOrPen());
         break;
       case compat::kWmPointerDown: {
         DWORD type = 0;
         compat::GetPointerType(compat::PointerId(m->wParam), &type);
-        g_last = {GetTickCount64(), type == compat::kPointerTypeTouch || type == compat::kPointerTypePen};
+        Record(m->hwnd, type == compat::kPointerTypeTouch || type == compat::kPointerTypePen);
         break;
       }
       case WM_KEYDOWN:
@@ -57,7 +66,9 @@ bool SourceIsTouch(GetSourceFn fn) {
 
 }  // namespace
 
-void TouchTracker::Install() {
+void TouchTracker::Install(HWND notify, UINT message) {
+  g_notify = notify;
+  g_notify_message = message;
   if (!hook_) hook_ = SetWindowsHookExW(WH_GETMESSAGE, GetMessageHook, nullptr, GetCurrentThreadId());
 }
 
@@ -66,6 +77,7 @@ void TouchTracker::Uninstall() {
     UnhookWindowsHookEx(hook_);
     hook_ = nullptr;
   }
+  g_notify = nullptr;
 }
 
 bool TouchTracker::FocusFromTouch() const {

@@ -99,6 +99,23 @@ bool FocusRegistry::PushCommit(const std::wstring& text) {
   return false;
 }
 
+std::wstring FocusRegistry::Describe() const {
+  const DWORD fg_tid = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+  std::lock_guard lock(mutex_);
+  std::wstring out = L"foreground thread " + std::to_wstring(fg_tid) + L", " + std::to_wstring(clients_.size()) +
+                     L" TIP client(s)\n";
+  for (const auto& [id, c] : clients_) {
+    const FocusInfo& f = c.info;
+    out += L"  client " + std::to_wstring(id) + L": " + f.exe.substr(f.exe.find_last_of(L"\\/") + 1) + L" pid " +
+           std::to_wstring(f.pid) + L" tid " + std::to_wstring(f.tid) + (f.focused ? L" FOCUSED" : L"") +
+           (f.touch ? L" touch" : L"") + (f.read_only ? L" read-only" : L"") + (c.events ? L" events" : L" NO-EVENTS") +
+           L" scopes=";
+    for (uint32_t s : f.scopes) out += std::to_wstring(s) + L",";
+    out += L"\n";
+  }
+  return out;
+}
+
 void FocusRegistry::SetListener(std::function<void(const FocusInfo&)> listener) {
   std::lock_guard lock(mutex_);
   listener_ = std::move(listener);
