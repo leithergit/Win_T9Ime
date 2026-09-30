@@ -1,5 +1,6 @@
 add_library(t9panel STATIC
   panel/panel_layout.h panel/panel_layout.cpp
+  panel/auto_show.h panel/auto_show.cpp
   panel/panel_renderer.h panel/panel_renderer.cpp
   panel/panel_window.h panel/panel_window.cpp
   app/engine_thread.h app/engine_thread.cpp

@@ -15,15 +15,18 @@ void FocusRegistry::Register(uint64_t client, DWORD pid, DWORD tid, std::wstring
 }
 
 void FocusRegistry::Unregister(uint64_t client) {
-  bool was_focused = false;
+  FocusInfo info;
   {
     std::lock_guard lock(mutex_);
     auto it = clients_.find(client);
     if (it == clients_.end()) return;
-    was_focused = it->second.info.focused;
+    info = it->second.info;
     clients_.erase(it);
   }
-  if (was_focused) Notify();
+  if (info.focused) {
+    info.focused = false;
+    Notify(info);
+  }
 }
 
 void FocusRegistry::SetEventPipe(uint64_t client, HANDLE pipe) {
@@ -39,6 +42,7 @@ void FocusRegistry::ClearEventPipe(uint64_t client, HANDLE pipe) {
 }
 
 void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only) {
+  FocusInfo info;
   {
     std::lock_guard lock(mutex_);
     auto it = clients_.find(client);
@@ -54,18 +58,21 @@ void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> sc
     for (auto& [id, other] : clients_) {
       if (id != client && other.info.tid == f.tid) other.info.focused = false;
     }
+    info = f;
   }
-  Notify();
+  Notify(info);
 }
 
 void FocusRegistry::FocusOut(uint64_t client) {
+  FocusInfo info;
   {
     std::lock_guard lock(mutex_);
     auto it = clients_.find(client);
     if (it == clients_.end() || !it->second.info.focused) return;
     it->second.info.focused = false;
+    info = it->second.info;
   }
-  Notify();
+  Notify(info);
 }
 
 bool FocusRegistry::Foreground(FocusInfo* out) const {
@@ -92,18 +99,18 @@ bool FocusRegistry::PushCommit(const std::wstring& text) {
   return false;
 }
 
-void FocusRegistry::SetListener(std::function<void()> listener) {
+void FocusRegistry::SetListener(std::function<void(const FocusInfo&)> listener) {
   std::lock_guard lock(mutex_);
   listener_ = std::move(listener);
 }
 
-void FocusRegistry::Notify() {
-  std::function<void()> listener;
+void FocusRegistry::Notify(const FocusInfo& info) {
+  std::function<void(const FocusInfo&)> listener;
   {
     std::lock_guard lock(mutex_);
     listener = listener_;
   }
-  if (listener) listener();
+  if (listener) listener(info);
 }
 
 }  // namespace t9ime::ipc

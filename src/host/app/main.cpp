@@ -29,9 +29,12 @@ constexpr UINT kTrayId = 1;
 constexpr UINT kCmdToggle = 100;
 constexpr UINT kCmdExit = 101;
 constexpr UINT kCmdDock = 102;
+constexpr UINT kCmdAutoShow = 103;
+constexpr UINT kCmdAlwaysShow = 104;
 
 struct Args {
   std::wstring data, user, settings, dump_layout, pipe_name;
+  bool always_show = false;
   panel::InputMode input = compat::HasPointerInput() ? panel::InputMode::kPointer : panel::InputMode::kTouch;
   bool show = false;
   bool single_instance = true;
@@ -84,6 +87,7 @@ Args ParseArgs() {
     else if (k == L"--pipe") a.pipe_name = next();
     else if (k == L"--show") a.show = true;
     else if (k == L"--no-single-instance") a.single_instance = false;
+    else if (k == L"--always-show") a.always_show = true;
     else if (k == L"--input") {
       const std::wstring v = next();
       a.input = v == L"mouse" ? panel::InputMode::kMouse
@@ -127,6 +131,7 @@ class HostApp {
     po.input = args.input;
     po.settings_file = args.settings;
     po.dump_layout = args.dump_layout;
+    po.always_show = args.always_show;
     if (!panel_->Create(instance, po)) return false;
 
     RimeEngine::Options eo;
@@ -141,6 +146,16 @@ class HostApp {
     if (!events_->Start()) events_.reset();
     // Panel output goes to the focused TIP when there is one.
     panel_->SetDeliver([this](const std::wstring& text) { return focus_.PushCommit(text); });
+    // Focus changes drive the automatic show / hide (called on pipe threads).
+    focus_.SetListener([this](const ipc::FocusInfo& info) {
+      panel::FocusEvent e;
+      e.focus_in = info.focused;
+      e.exe = info.exe.substr(info.exe.find_last_of(L"\\/") + 1);
+      e.scopes = info.scopes;
+      e.touch = info.touch;
+      e.read_only = info.read_only;
+      panel_->PostFocusEvent(std::move(e));
+    });
 
     AddTrayIcon();
     if (args.show) panel_->Show();
@@ -175,6 +190,11 @@ class HostApp {
       if (msg == WM_COMMAND) {
         if (LOWORD(wp) == kCmdToggle) self->panel_->Toggle();
         if (LOWORD(wp) == kCmdDock) self->panel_->Dock();
+        if (LOWORD(wp) == kCmdAutoShow || LOWORD(wp) == kCmdAlwaysShow) {
+          auto& s = self->panel_->settings();
+          (LOWORD(wp) == kCmdAutoShow ? s.auto_show : s.always_show) ^= true;
+          self->panel_->SaveSettings();
+        }
         if (LOWORD(wp) == kCmdExit) PostQuitMessage(0);
         return 0;
       }
@@ -209,6 +229,11 @@ class HostApp {
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, kCmdToggle, panel_->visible() ? L"隐藏键盘" : L"显示键盘");
     AppendMenuW(menu, MF_STRING, kCmdDock, L"停靠到屏幕底部");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    const auto& s = panel_->settings();
+    AppendMenuW(menu, MF_STRING | (s.auto_show ? MF_CHECKED : 0), kCmdAutoShow, L"触摸输入框时自动弹出键盘");
+    AppendMenuW(menu, MF_STRING | (s.always_show ? MF_CHECKED : 0) | (s.auto_show ? 0 : MF_GRAYED), kCmdAlwaysShow,
+                L"任何方式聚焦输入框都弹出（无触摸屏时）");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCmdExit, L"退出");
     POINT pt;

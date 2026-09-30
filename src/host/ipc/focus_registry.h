@@ -41,8 +41,9 @@ class FocusRegistry {
   // False if the foreground window has no connected TIP: use the fallback.
   bool PushCommit(const std::wstring& text);
 
-  // Called (on the calling thread) after every focus change.
-  void SetListener(std::function<void()> listener);
+  // Called (on the calling pipe thread) after every focus change with the
+  // client's state (`focused` false = focus out).
+  void SetListener(std::function<void(const FocusInfo&)> listener);
 
  private:
   struct Client {
@@ -51,8 +52,8 @@ class FocusRegistry {
   };
   mutable std::mutex mutex_;
   std::map<uint64_t, Client> clients_;
-  std::function<void()> listener_;
-  void Notify();
+  std::function<void(const FocusInfo&)> listener_;
+  void Notify(const FocusInfo& info);
 };
 
 }  // namespace t9ime::ipc

@@ -1,6 +1,9 @@
 #include "text_service.h"
 
+#include <InputScope.h>
 #include <olectl.h>
+
+#include <algorithm>
 
 #include "display_attribute.h"
 #include "edit_session.h"
@@ -15,6 +18,51 @@ namespace {
 constexpr DWORD kCmodeNative = 0x0001;  // IME_CMODE_NATIVE
 constexpr UINT kPushMessage = WM_APP + 1;
 constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
+
+// {1713DD5A-68E7-4A5B-9AF6-592A595C778D} (InputScope.h; not in uuid.lib)
+const GUID kGuidPropInputScope = {0x1713dd5a, 0x68e7, 0x4a5b, {0x9a, 0xf6, 0x59, 0x2a, 0x59, 0x5c, 0x77, 0x8d}};
+const IID kIidTfInputScope = {0xfde1eaee, 0x6924, 0x4cdf, {0x91, 0xe7, 0xda, 0x38, 0xcf, 0xf5, 0x55, 0x9d}};
+
+// Fields where Chinese composition makes no sense: keys go straight to the app.
+constexpr uint32_t kPassThroughScopes[] = {
+    IS_PASSWORD, IS_PRIVATE, IS_NUMERIC_PASSWORD, IS_NUMERIC_PIN, IS_ALPHANUMERIC_PIN,
+    IS_URL, IS_EMAIL_USERNAME, IS_EMAIL_SMTPEMAILADDRESS, IS_EMAILNAME_OR_ADDRESS, IS_LOGINNAME,
+    IS_DIGITS, IS_NUMBER, IS_NUMBER_FULLWIDTH, IS_TELEPHONE_FULLTELEPHONENUMBER,
+    IS_TELEPHONE_COUNTRYCODE, IS_TELEPHONE_AREACODE, IS_TELEPHONE_LOCALNUMBER,
+};
+
+// InputScope of the selection in `context` (read lock required).
+std::vector<uint32_t> ReadInputScopes(TfEditCookie ec, ITfContext* context) {
+  std::vector<uint32_t> out;
+  // InputScope is an application property (CUAS exposes SetInputScope() of
+  // IMM32 windows there); some text stores also offer it as a regular property.
+  ComPtr<ITfReadOnlyProperty> prop;
+  if (FAILED(context->GetAppProperty(kGuidPropInputScope, &prop)) || !prop) {
+    ComPtr<ITfProperty> regular;
+    if (FAILED(context->GetProperty(kGuidPropInputScope, &regular)) || !regular) return out;
+    prop = regular;
+  }
+  TF_SELECTION sel = {};
+  ULONG fetched = 0;
+  if (FAILED(context->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &fetched)) || !fetched) return out;
+  ComPtr<ITfRange> range;
+  range.Attach(sel.range);
+  VARIANT v;
+  VariantInit(&v);
+  if (prop->GetValue(ec, range.Get(), &v) == S_OK && v.vt == VT_UNKNOWN && v.punkVal) {
+    ComPtr<ITfInputScope> scope;
+    if (SUCCEEDED(v.punkVal->QueryInterface(kIidTfInputScope, reinterpret_cast<void**>(scope.GetAddressOf())))) {
+      InputScope* scopes = nullptr;
+      UINT count = 0;
+      if (SUCCEEDED(scope->GetInputScopes(&scopes, &count)) && scopes) {
+        for (UINT i = 0; i < count; ++i) out.push_back(static_cast<uint32_t>(scopes[i]));
+        CoTaskMemFree(scopes);
+      }
+    }
+  }
+  VariantClear(&v);
+  return out;
+}
 
 template <typename T>
 ComPtr<T> Query(IUnknown* p) {
@@ -88,6 +136,7 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     client_id_ = id;
     activate_flags_ = flags;
 
+    touch_.Install();
     ui_.Attach(new CandidateUI());
     ui_->SetCallbacks({[this](UINT index) { SelectCandidate(static_cast<int>(index)); }, [this] { Abort(); }});
     window_.SetCallbacks([this](int index) { SelectCandidate(index); }, [this](bool backward) { ChangePage(backward); });
@@ -135,6 +184,7 @@ STDMETHODIMP TextService::Deactivate() {
     Abort();
     host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
     events_.Stop();
+    touch_.Uninstall();
     if (message_window_) {
       SetWindowLongPtrW(message_window_, GWLP_USERDATA, 0);
       DestroyWindow(message_window_);
@@ -297,7 +347,7 @@ HRESULT TextService::HandleKey(ITfContext* context, WPARAM vk, LPARAM lp, bool u
     return S_OK;
   }
   pending_.valid = false;
-  if (!KeyboardUsable(context)) return S_OK;
+  if (!KeyboardUsable(context) || PassThroughScope()) return S_OK;
 
   BYTE state[256];
   if (!GetKeyboardState(state)) return S_OK;
@@ -480,18 +530,60 @@ ITfContext* TextService::FocusedContext(ComPtr<ITfContext>* holder) {
 void TextService::ReportFocus(ITfDocumentMgr* doc) {
   ComPtr<ITfContext> top;
   if (!doc || FAILED(doc->GetTop(&top)) || !top) {
+    focus_scopes_.clear();
     host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
     EnsureEvents();
     return;
   }
+  // Computed now: it describes the input message being processed.
+  const bool touch = touch_.FocusFromTouch();
   HWND hwnd = nullptr;
   ComPtr<ITfContextView> view;
   if (SUCCEEDED(top->GetActiveView(&view)) && view) view->GetWnd(&hwnd);
+  TF_STATUS status = {};
+  const bool read_only = SUCCEEDED(top->GetStatus(&status)) && (status.dwDynamicFlags & TS_SD_READONLY);
+
+  // InputScope needs a read lock. Try a synchronous session; if the document
+  // is busy, report now without it and again once the async session runs.
+  std::vector<uint32_t> scopes;
+  bool have_scopes = false;
+  RequestEditSession(top.Get(), client_id_, TF_ES_SYNC | TF_ES_READ, [&](TfEditCookie ec) {
+    scopes = ReadInputScopes(ec, top.Get());
+    have_scopes = true;
+    return S_OK;
+  });
+  focus_scopes_ = scopes;
+  SendFocusIn(hwnd, scopes, touch, read_only);
+  if (!have_scopes) {
+    ComPtr<TextService> self(this);
+    RequestEditSession(top.Get(), client_id_, TF_ES_ASYNC | TF_ES_READ, [self, top, hwnd, touch, read_only](TfEditCookie ec) {
+      auto late = ReadInputScopes(ec, top.Get());
+      if (late != self->focus_scopes_) {
+        self->focus_scopes_ = late;
+        self->SendFocusIn(hwnd, late, touch, read_only);
+      }
+      return S_OK;
+    });
+  }
+}
+
+void TextService::SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only) {
   ipc::Writer req(ipc::MsgType::kFocusIn);
   req.U32(ipc::kTagTid, GetCurrentThreadId());
   req.U32(ipc::kTagHwnd, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd)));
+  for (uint32_t s : scopes) req.U32(ipc::kTagInputScope, s);
+  req.Bool(ipc::kTagTouch, touch).Bool(ipc::kTagReadOnly, read_only);
   host_.Notify(std::move(req), HostClient::kKeyTimeoutMs);
   EnsureEvents();
+}
+
+bool TextService::PassThroughScope() const {
+  for (uint32_t s : focus_scopes_) {
+    if (std::find(std::begin(kPassThroughScopes), std::end(kPassThroughScopes), s) != std::end(kPassThroughScopes)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void TextService::EnsureEvents() {

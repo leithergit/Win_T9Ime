@@ -1,5 +1,6 @@
 // Test target for end-to-end tests: a top-level window with a multi-line Edit
 // control that keeps the keyboard focus. Tests read the text with WM_GETTEXT.
+// Below it: an Edit with InputScope IS_NUMBER and a password Edit.
 //   --activate-tip   switch this process to the T9Ime TSF profile
 #include <windows.h>
 #include <msctf.h>
@@ -9,6 +10,8 @@ void RestorePrevious();
 
 namespace {
 HWND g_edit = nullptr;
+HWND g_number = nullptr;
+HWND g_password = nullptr;
 WNDPROC g_edit_proc = nullptr;
 
 // The stock multi-line Edit ignores Ctrl+A; handle it so tests can check that
@@ -31,10 +34,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       SendMessageW(g_edit, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
       g_edit_proc = reinterpret_cast<WNDPROC>(
           SetWindowLongPtrW(g_edit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(EditProc)));
+      // Second field: InputScope IS_NUMBER; third: a password field.
+      g_number = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 0, 0, 0, 0,
+                                 hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
+      g_password = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+                                   0, 0, 0, 0, hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
+      if (HMODULE msctf = LoadLibraryW(L"msctf.dll")) {
+        using SetInputScopeFn = HRESULT(WINAPI*)(HWND, int);
+        if (auto fn = reinterpret_cast<SetInputScopeFn>(GetProcAddress(msctf, "SetInputScope"))) {
+          fn(g_number, 29);  // IS_NUMBER
+        }
+      }
       return 0;
-    case WM_SIZE:
-      MoveWindow(g_edit, 0, 0, LOWORD(lp), HIWORD(lp), TRUE);
+    case WM_SIZE: {
+      const int w = LOWORD(lp), h = HIWORD(lp), row = 28;
+      MoveWindow(g_edit, 0, 0, w, h - 2 * row, TRUE);
+      MoveWindow(g_number, 0, h - 2 * row, w, row, TRUE);
+      MoveWindow(g_password, 0, h - row, w, row, TRUE);
       return 0;
+    }
     case WM_SETFOCUS:
       SetFocus(g_edit);
       return 0;

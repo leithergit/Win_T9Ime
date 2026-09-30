@@ -1,4 +1,4 @@
-add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp unit/ipc_tests.cpp)
+add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp unit/ipc_tests.cpp unit/auto_show_tests.cpp)
 target_link_libraries(t9_unit_tests PRIVATE t9core t9panel)
 t9_win7_subsystem(t9_unit_tests CONSOLE)
 target_include_directories(t9_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}/third_party/doctest")
@@ -48,3 +48,9 @@ add_test(NAME e2e_push
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/push_e2e.py"
           --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>" --work "${CMAKE_BINARY_DIR}/e2e")
 set_tests_properties(e2e_push PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+
+# Automatic show / hide: InputScope layouts, password fields, touch focus.
+add_test(NAME e2e_autoshow
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/autoshow_e2e.py"
+          --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>" --work "${CMAKE_BINARY_DIR}/e2e")
+set_tests_properties(e2e_autoshow PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)

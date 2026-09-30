@@ -16,6 +16,8 @@ namespace {
 constexpr wchar_t kClassName[] = L"T9Ime.Panel";
 constexpr UINT_PTR kLongPressTimer = 1;
 constexpr UINT_PTR kRepeatTimer = 2;
+constexpr UINT_PTR kAutoHideTimer = 3;
+constexpr UINT kAutoHideMs = 300;  // focus may just be moving to another field
 constexpr UINT kLongPressMs = 450;
 constexpr UINT kRepeatMs = 70;
 constexpr float kScrollSlop = 8;    // DIPs before a press on a list turns into scrolling
@@ -97,8 +99,59 @@ bool PanelWindow::Create(HINSTANCE instance, const PanelOptions& options) {
   if (options_.input == InputMode::kTouch) RegisterTouchWindow(hwnd_, TWF_WANTPALM);
   compat::DisableTouchFeedback(hwnd_);
   LoadPlacement();
+  if (!options_.settings_file.empty()) {
+    const wchar_t* file = options_.settings_file.c_str();
+    settings_.auto_show = GetPrivateProfileIntW(L"panel", L"auto_show", 1, file) != 0;
+    settings_.always_show = GetPrivateProfileIntW(L"panel", L"always_show", 0, file) != 0;
+  }
+  if (options_.always_show) settings_.always_show = true;
   Relayout();
+  if (!options_.dump_layout.empty()) DumpLayout();  // tests start with a hidden panel too
   return true;
+}
+
+void PanelWindow::SaveSettings() {
+  if (options_.settings_file.empty()) return;
+  const wchar_t* file = options_.settings_file.c_str();
+  WritePrivateProfileStringW(L"panel", L"auto_show", settings_.auto_show ? L"1" : L"0", file);
+  WritePrivateProfileStringW(L"panel", L"always_show", settings_.always_show ? L"1" : L"0", file);
+}
+
+void PanelWindow::PostFocusEvent(FocusEvent e) {
+  {
+    std::lock_guard lock(focus_mutex_);
+    focus_events_.push_back(std::move(e));
+  }
+  PostMessageW(hwnd_, kFocusMessage, 0, 0);
+}
+
+void PanelWindow::OnFocusEvents() {
+  std::deque<FocusEvent> events;
+  {
+    std::lock_guard lock(focus_mutex_);
+    events.swap(focus_events_);
+  }
+  for (const FocusEvent& e : events) {
+    last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + " scopes=";
+    for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
+    const AutoDecision d = DecideOnFocus(e, settings_, text_mode_, compat::Os().AtLeastWin10());
+    switch (d.action) {
+      case AutoAction::kShow:
+        KillTimer(hwnd_, kAutoHideTimer);
+        SetMode(d.mode);
+        if (!visible()) {
+          Show();
+          auto_shown_ = true;
+        }
+        break;
+      case AutoAction::kHide:
+        if (auto_shown_ && visible()) SetTimer(hwnd_, kAutoHideTimer, kAutoHideMs, nullptr);
+        break;
+      case AutoAction::kNone:
+        if (e.focus_in) KillTimer(hwnd_, kAutoHideTimer);  // focus moved on: keep the panel
+        break;
+    }
+  }
 }
 
 void PanelWindow::Show() {
@@ -113,6 +166,8 @@ void PanelWindow::Dock() {
 }
 
 void PanelWindow::Hide() {
+  auto_shown_ = false;
+  KillTimer(hwnd_, kAutoHideTimer);
   tracks_.clear();
   KillTimer(hwnd_, kLongPressTimer);
   KillTimer(hwnd_, kRepeatTimer);
@@ -200,7 +255,16 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
       break;
 
     case WM_TIMER:
+      if (wp == kAutoHideTimer) {
+        KillTimer(hwnd_, kAutoHideTimer);
+        if (tracks_.empty()) Hide();  // not while a finger is on the panel
+        return 0;
+      }
       OnTimer(wp);
+      return 0;
+
+    case kFocusMessage:
+      OnFocusEvents();
       return 0;
 
     case kEngineMessage:
@@ -634,7 +698,7 @@ void PanelWindow::DumpLayout() {
   RECT wr;
   GetWindowRect(hwnd_, &wr);
   std::string json = "{\"seq\":" + std::to_string(++seq) + ",\"visible\":" + (visible() ? "true" : "false") +
-                     ",\"pushed\":" + std::to_string(pushed_) + ",\"sent\":" + std::to_string(sent_) +
+                     ",\"focus\":\"" + JsonEscape(last_focus_) + "\",\"pushed\":" + std::to_string(pushed_) + ",\"sent\":" + std::to_string(sent_) +
                      ",\"input\":\"" + JsonEscape(snapshot_.state.input) + "\",\"window\":[" +
                      std::to_string(wr.left) + "," + std::to_string(wr.top) + "," +
                      std::to_string(wr.right) + "," + std::to_string(wr.bottom) + "],\"elements\":[";

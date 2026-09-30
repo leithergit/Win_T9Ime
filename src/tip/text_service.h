@@ -14,6 +14,7 @@
 #include "candidate_ui.h"
 #include "candidate_window.h"
 #include "event_listener.h"
+#include "touch_tracker.h"
 #include "host_client.h"
 #include "key_event.h"
 #include "lang_bar.h"
@@ -107,6 +108,8 @@ class TextService final : public ITfTextInputProcessorEx,
   void EnsureEvents();
   void OnPushes();
   void ReportFocus(ITfDocumentMgr* doc);
+  void SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bool touch, bool read_only);
+  bool PassThroughScope() const;
   ITfContext* FocusedContext(Microsoft::WRL::ComPtr<ITfContext>* holder);
 
   // Sinks
@@ -159,6 +162,8 @@ class TextService final : public ITfTextInputProcessorEx,
   HWND message_window_ = nullptr;  // message-only, on this thread
   EventListener events_;
   uint32_t events_generation_ = 0;
+  TouchTracker touch_;
+  std::vector<uint32_t> focus_scopes_;  // InputScope of the focused field
 };
 
 }  // namespace t9ime::tip

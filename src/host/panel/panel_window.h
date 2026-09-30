@@ -5,10 +5,13 @@
 #include <windows.h>
 
 #include <functional>
+#include <deque>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include "auto_show.h"
 #include "engine_thread.h"
 #include "panel_layout.h"
 #include "panel_renderer.h"
@@ -25,6 +28,7 @@ struct PanelOptions {
   InputMode input = InputMode::kPointer;
   std::wstring settings_file;  // position / size persistence; empty = none
   std::wstring dump_layout;    // test hook: write element screen positions after each paint
+  bool always_show = false;    // command line override of AutoShowSettings::always_show
 };
 
 class PanelWindow {
@@ -38,6 +42,7 @@ class PanelWindow {
   HWND hwnd() const noexcept { return hwnd_; }
   // Message posted by the engine thread when snapshots are ready.
   static constexpr UINT kEngineMessage = WM_APP + 1;
+  static constexpr UINT kFocusMessage = WM_APP + 2;
 
   void Show();
   void Hide();
@@ -47,6 +52,11 @@ class PanelWindow {
   void SetDeliver(std::function<bool(const std::wstring&)> deliver) { deliver_ = std::move(deliver); }
   // Back to the default place: bottom center of the current monitor.
   void Dock();
+
+  // Focus changes reported by the TIPs; callable from any thread.
+  void PostFocusEvent(FocusEvent e);
+  AutoShowSettings& settings() { return settings_; }
+  void SaveSettings();
   bool visible() const { return hwnd_ && IsWindowVisible(hwnd_); }
 
  private:
@@ -94,11 +104,18 @@ class PanelWindow {
   void SavePlacement();
 
   void Output(const std::wstring& text);
+  void OnFocusEvents();
 
   EngineThread& engine_;
   PanelOptions options_;
   std::function<bool(const std::wstring&)> deliver_;
   unsigned pushed_ = 0, sent_ = 0;  // delivery statistics (test hook)
+
+  AutoShowSettings settings_;
+  bool auto_shown_ = false;
+  std::string last_focus_;  // test hook: last focus event, for the layout dump  // shown by a focus change (then also hidden by one)
+  std::mutex focus_mutex_;
+  std::deque<FocusEvent> focus_events_;
   HWND hwnd_ = nullptr;
   UINT dpi_ = 96;
   PanelRenderer renderer_;
