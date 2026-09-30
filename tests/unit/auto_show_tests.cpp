@@ -47,6 +47,16 @@ TEST_CASE("auto show: InputScope picks the layout") {
   CHECK(DecideOnFocus(In(true, {63}), s, Mode::kChinese, true).mode == Mode::kNumber);       // numeric password
 }
 
+TEST_CASE("auto show: switching T9Ime off hides at once") {
+  AutoShowSettings s;
+  FocusEvent out;
+  CHECK_FALSE(DecideOnFocus(out, s, Mode::kChinese, true).now);  // plain focus out: delayed, auto-shown only
+  out.deactivated = true;
+  const AutoDecision d = DecideOnFocus(out, s, Mode::kChinese, true);
+  CHECK(d.action == AutoAction::kHide);
+  CHECK(d.now);
+}
+
 TEST_CASE("auto show: switching to T9Ime shows the panel") {
   AutoShowSettings s;
   FocusEvent e = In(false, {29});

@@ -204,10 +204,13 @@ class HostApp {
       e.touch = info.touch;
       e.read_only = info.read_only;
       e.switched = info.focused && info.activated && foreground::SettledIn(info.tid);
+      e.deactivated = info.deactivated && info.tid == GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
       panel_->PostFocusEvent(std::move(e));
     });
 
-    foreground::Start();
+    foreground::Start([this](HWND fg) {
+      if (panel_) panel_->OnForegroundChanged(fg);
+    });
     if (args.take_over_touch_keyboard) touch_keyboard::TakeOver();
     AddTrayIcon();
     if (args.show) panel_->Show();
@@ -339,12 +342,14 @@ class HostApp {
       case MsgType::kCtlShow:
         if (mode) panel_->SetModeByApplication(*mode);
         panel_->Show();
+        panel_->BindToForeground();  // hides when the user switches to another application
         break;
       case MsgType::kCtlHide:
         panel_->Hide();
         break;
       case MsgType::kCtlToggle:
         panel_->Toggle();
+        if (panel_->visible()) panel_->BindToForeground();
         break;
       case MsgType::kCtlSetMode:
         if (!mode) return error();

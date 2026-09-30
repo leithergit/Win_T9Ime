@@ -209,7 +209,13 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
 STDMETHODIMP TextService::Deactivate() {
   return Guard([&]() -> HRESULT {
     Abort();
-    host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
+    {
+      // The user switched to another input method (or the thread ends): the
+      // host hides the panel if this is the foreground application.
+      ipc::Writer out(ipc::MsgType::kFocusOut);
+      out.U32(ipc::kTagFlags, ipc::kFocusDeactivated);
+      host_.Notify(std::move(out), HostClient::kKeyTimeoutMs);
+    }
     events_.Stop();
     touch_.Uninstall();
     if (message_window_) {

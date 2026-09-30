@@ -3,7 +3,9 @@
 // Below it: an Edit with InputScope IS_NUMBER and a password Edit.
 //   --activate-tip       switch this process to the T9Ime TSF profile
 //   --activate-english   switch this process to the US English keyboard
-// Posting WM_APP + 1 to the window switches to T9Ime later (a user's switch).
+//   --title <text> --at <x>,<y>   window title / position (a second instance)
+// Posting WM_APP + 1 to the window switches to T9Ime later (a user's switch),
+// WM_APP + 5 switches it to the US English keyboard.
 // IMM32 (sent to the window, acting on the text box):
 //   WM_APP + 2  wParam: ImmSetOpenStatus(wParam)
 //   WM_APP + 3  wParam: ImmSetConversionStatus(wParam ? IME_CMODE_NATIVE : alphanumeric)
@@ -13,6 +15,8 @@
 #include <imm.h>
 #include <msctf.h>
 #include <shellapi.h>
+
+#include <cwchar>
 
 void RestorePrevious();
 bool ActivateProfile(bool t9ime);
@@ -94,6 +98,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       ImmReleaseContext(g_edit, imc);
       return result;
     }
+    case WM_APP + 5: {
+      bool ok = ActivateProfile(false);
+      if (!ok) ok = ActivateKeyboardLayout(LoadKeyboardLayoutW(L"00000409", 0), KLF_SETFORPROCESS) != nullptr;
+      SetWindowTextW(hwnd, ok ? L"T9Ime TestTarget [en]" : L"T9Ime TestTarget [en failed]");
+      return 0;
+    }
     case WM_APP + 1:
       SetWindowTextW(hwnd, ActivateProfile(true) ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
       return 0;
@@ -153,9 +163,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   int argc = 0;
   LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   bool activate = false, english = false;
+  const wchar_t* title = L"T9Ime TestTarget";
+  static wchar_t title_buf[128];
+  int x = 40, y = 40;
   for (int i = 1; i < argc; ++i) {
     activate |= lstrcmpW(argv[i], L"--activate-tip") == 0;
     english |= lstrcmpW(argv[i], L"--activate-english") == 0;
+    if (lstrcmpW(argv[i], L"--title") == 0 && i + 1 < argc) {
+      lstrcpynW(title_buf, argv[++i], 128);
+      title = title_buf;
+    }
+    if (lstrcmpW(argv[i], L"--at") == 0 && i + 1 < argc) swscanf_s(argv[++i], L"%d,%d", &x, &y);
   }
   LocalFree(argv);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -166,7 +184,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
   wc.lpszClassName = L"T9Ime.TestTarget";
   RegisterClassW(&wc);
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"T9Ime TestTarget", WS_OVERLAPPEDWINDOW, 40, 40, 520, 260,
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, title, WS_OVERLAPPEDWINDOW, x, y, 520, 260,
                               nullptr, nullptr, instance, nullptr);
   ShowWindow(hwnd, show);
   SetForegroundWindow(hwnd);

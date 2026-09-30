@@ -94,7 +94,7 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
     // Not behind the engine (warm-up, long lookups): a late answer would make
     // the TIP drop the connection. The session is cleared with the next
     // engine request of this connection.
-    focus_.FocusOut(client);
+    focus_.FocusOut(client, (req.U32Or(kTagFlags, 0) & kFocusDeactivated) != 0);
     t_clear_pending = true;
     return Writer(MsgType::kAck, seq).Finish();
   }

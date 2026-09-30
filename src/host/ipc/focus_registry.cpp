@@ -56,6 +56,7 @@ void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> sc
     f.focused = true;
     f.no_context = no_context;
     f.activated = activated;
+    f.deactivated = false;
     if (!touch_debug.empty()) f.touch_debug = std::move(touch_debug);
     // One focused field per thread (another TIP instance on the same thread
     // cannot exist, but clear stale state from reconnects of that thread).
@@ -67,13 +68,16 @@ void FocusRegistry::FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> sc
   Notify(info);
 }
 
-void FocusRegistry::FocusOut(uint64_t client) {
+void FocusRegistry::FocusOut(uint64_t client, bool deactivated) {
   FocusInfo info;
   {
     std::lock_guard lock(mutex_);
     auto it = clients_.find(client);
-    if (it == clients_.end() || !it->second.info.focused) return;
+    // A deactivation is reported even without a focused field: the panel may
+    // have been shown by an application (T9Ctl).
+    if (it == clients_.end() || (!it->second.info.focused && !deactivated)) return;
     it->second.info.focused = false;
+    it->second.info.deactivated = deactivated;
     info = it->second.info;
   }
   Notify(info);

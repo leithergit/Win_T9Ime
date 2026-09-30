@@ -196,6 +196,33 @@ def main() -> int:
         check(ok and has(panel, pe.TEXT, '7'),
               f'switching to T9Ime pops the panel up with the field layout (focus {(panel.read() or {}).get("focus")!r})')
 
+        # The user picks the English keyboard, then switches the application to
+        # another input method: the panel goes away at once (D2).
+        panel.tap(pe.BACK)
+        panel.tap(pe.TOGGLE)
+        check(has(panel, pe.LETTER, 'q'), 'English keyboard chosen')
+        user32.PostMessageW(hwnd, WM_APP + 5, 0, 0)  # switch to the US English keyboard
+        pe.wait_for(lambda: '[en' in pe.window_text(hwnd), what='switch away from T9Ime')
+        ok = True
+        try:
+            pe.wait_for(lambda: not visible(panel), timeout=5, what='panel hidden')
+        except AssertionError:
+            ok = False
+        check(ok, f'switching to another input method hides the panel (focus {(panel.read() or {}).get("focus")!r})')
+
+        # Back to T9Ime in an ordinary text field: the default nine-key layout,
+        # not the English keyboard used before (D3).
+        pe.click(*center(edits[0]))
+        time.sleep(2.0)
+        user32.PostMessageW(hwnd, WM_APP + 1, 0, 0)
+        pe.wait_for(lambda: '[tip' in pe.window_text(hwnd), what='switch to T9Ime again')
+        try:
+            pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown')
+        except AssertionError:
+            pass
+        check(visible(panel) and has(panel, pe.KEY, '分词'),
+              f'switching back shows the default Chinese nine-key layout (focus {(panel.read() or {}).get("focus")!r})')
+
     caps = user32.GetKeyState(0x14) & 1
     try:
         run(True, always_scenario)

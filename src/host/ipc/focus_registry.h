@@ -26,6 +26,7 @@ struct FocusInfo {
   std::wstring touch_debug;     // what the TIP based `touch` on (diagnostics)
   bool no_context = false;      // no TSF document (password edit): use SendInput
   bool activated = false;       // this focus report came with T9Ime's activation in the thread
+  bool deactivated = false;     // focus out because T9Ime was switched off in the thread
 };
 
 class FocusRegistry {
@@ -37,7 +38,7 @@ class FocusRegistry {
 
   void FocusIn(uint64_t client, HWND hwnd, std::vector<uint32_t> scopes, bool touch, bool read_only,
                std::wstring touch_debug = {}, bool no_context = false, bool activated = false);
-  void FocusOut(uint64_t client);
+  void FocusOut(uint64_t client, bool deactivated = false);
 
   // The focused client on the foreground window's thread, if any.
   bool Foreground(FocusInfo* out) const;

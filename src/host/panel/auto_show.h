@@ -22,7 +22,8 @@ struct FocusEvent {
   std::vector<uint32_t> scopes;  // InputScope values
   bool touch = false;
   bool read_only = false;
-  bool switched = false;  // T9Ime was just activated by the user in the focused application
+  bool switched = false;     // T9Ime was just activated by the user in the focused application
+  bool deactivated = false;  // T9Ime was switched off in the foreground application
 };
 
 enum class AutoAction { kNone, kShow, kHide };
@@ -30,6 +31,7 @@ enum class AutoAction { kNone, kShow, kHide };
 struct AutoDecision {
   AutoAction action = AutoAction::kNone;
   Mode mode = Mode::kChinese;  // layout for kShow
+  bool now = false;            // kHide: at once, however the panel was shown
 };
 
 // `text_mode`: the layout to use for ordinary text fields (last Chinese /

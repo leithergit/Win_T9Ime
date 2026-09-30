@@ -140,8 +140,36 @@ def main() -> int:
         te.type_keys('ab')
         time.sleep(0.3)
         check(code == 0 and pe.window_text(edit) == 'ab', f'deactivate switches it away (got {pe.window_text(edit)!r})')
+
+        # D1: a keyboard shown for an application hides when another one comes to the front.
+        ctl('show')
+        pe.wait_for(lambda: (panel.read() or {}).get('visible'), timeout=5, what='panel shown for the target')
+        number = user32.FindWindowExW(hwnd, edit, 'Edit', None)
+        user32.GetWindowRect(number, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        time.sleep(0.8)
+        check((panel.read() or {}).get('visible'), 'stays while the user works in the same application')
+        other = subprocess.Popen([str(Path(args.target).resolve()), '--title', 'T9Ime Other', '--at', '640,60'])
+        other_hwnd = pe.wait_for(lambda: user32.FindWindowW(None, 'T9Ime Other'), what='second application')
+        other_edit = user32.FindWindowExW(other_hwnd, None, 'Edit', None)
+        time.sleep(0.5)
+        user32.GetWindowRect(other_edit, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        pe.wait_for(lambda: user32.GetForegroundWindow() == other_hwnd, what='second application in front')
+        ok = True
+        try:
+            pe.wait_for(lambda: not (panel.read() or {}).get('visible'), timeout=5, what='panel hidden')
+        except AssertionError:
+            ok = False
+        check(ok, 'switching to another application hides the keyboard')
+        user32.PostMessageW(other_hwnd, pe.WM_CLOSE, 0, 0)
+        try:
+            other.wait(5)
+        except subprocess.TimeoutExpired:
+            other.kill()
     finally:
         if target:
+            user32.PostMessageW(user32.FindWindowW(None, 'T9Ime Other') or 0, pe.WM_CLOSE, 0, 0)
             user32.PostMessageW(user32.FindWindowW('T9Ime.TestTarget', None), pe.WM_CLOSE, 0, 0)
             try:
                 target.wait(5)

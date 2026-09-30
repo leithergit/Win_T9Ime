@@ -5,6 +5,8 @@
 
 #include <windows.h>
 
+#include <functional>
+
 namespace t9ime {
 
 // Asks Windows to make T9Ime the active input method of the foreground
@@ -32,7 +34,9 @@ class ImeSwitcher {
 // it first gets the focus). Records foreground changes with an out-of-context
 // WinEvent hook. Start() on a thread with a message loop.
 namespace foreground {
-void Start();
+// `on_change` runs on the calling thread (which must pump messages) when
+// another process's window comes to the front.
+void Start(std::function<void(HWND)> on_change = nullptr);
 void Stop();
 // True if `tid` owns the foreground window and that window did not just come
 // to the front (or came back to it after a short detour, e.g. a switcher

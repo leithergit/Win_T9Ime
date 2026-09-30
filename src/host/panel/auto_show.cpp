@@ -49,6 +49,7 @@ AutoDecision DecideOnFocus(const FocusEvent& e, const AutoShowSettings& settings
   AutoDecision d;
   if (!e.focus_in || e.read_only) {
     d.action = AutoAction::kHide;
+    d.now = e.deactivated;
     return d;
   }
   if (win8_or_later && IsSystemOverlay(e.exe)) return d;

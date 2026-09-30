@@ -103,20 +103,25 @@ std::mutex g_mutex;
 HWND g_current = nullptr, g_previous = nullptr, g_before = nullptr;
 ULONGLONG g_changed = 0;
 HWINEVENTHOOK g_hook = nullptr;
+std::function<void(HWND)> g_on_change;  // UI thread only
 
 void CALLBACK OnForeground(HWINEVENTHOOK, DWORD, HWND hwnd, LONG object, LONG, DWORD, DWORD) {
   if (object != OBJID_WINDOW || !hwnd) return;
-  std::lock_guard lock(g_mutex);
-  if (hwnd == g_current) return;
-  g_before = g_previous;
-  g_previous = g_current;
-  g_current = hwnd;
-  g_changed = GetTickCount64();
+  {
+    std::lock_guard lock(g_mutex);
+    if (hwnd == g_current) return;
+    g_before = g_previous;
+    g_previous = g_current;
+    g_current = hwnd;
+    g_changed = GetTickCount64();
+  }
+  if (g_on_change) g_on_change(hwnd);  // out-of-context: delivered on the hooking (UI) thread
 }
 }  // namespace
 
-void Start() {
+void Start(std::function<void(HWND)> on_change) {
   if (g_hook) return;
+  g_on_change = std::move(on_change);
   {
     std::lock_guard lock(g_mutex);
     g_current = GetForegroundWindow();
@@ -128,6 +133,7 @@ void Start() {
 void Stop() {
   if (g_hook) UnhookWinEvent(g_hook);
   g_hook = nullptr;
+  g_on_change = nullptr;
 }
 
 bool SettledIn(DWORD tid) {

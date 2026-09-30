@@ -147,6 +147,8 @@ void PanelWindow::OnFocusEvents() {
     last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + (e.switched ? " switched" : "") +
                   " scopes=";
     for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
+    // Switching to T9Ime starts over with the default (Chinese nine-key) layout.
+    if (e.switched) text_mode_ = Mode::kChinese;
     const AutoDecision d = DecideOnFocus(e, settings_, text_mode_, compat::Os().AtLeastWin10());
     {
       std::lock_guard lock(focus_mutex_);
@@ -164,9 +166,14 @@ void PanelWindow::OnFocusEvents() {
           Show();
           auto_shown_ = true;
         }
+        BindToForeground();
         break;
       case AutoAction::kHide:
-        if (auto_shown_ && visible()) SetTimer(hwnd_, kAutoHideTimer, kAutoHideMs, nullptr);
+        if (d.now && visible()) {
+          Hide();
+        } else if (auto_shown_ && visible()) {
+          SetTimer(hwnd_, kAutoHideTimer, kAutoHideMs, nullptr);
+        }
         break;
       case AutoAction::kNone:
         if (e.focus_in) KillTimer(hwnd_, kAutoHideTimer);  // focus moved on: keep the panel
@@ -186,8 +193,26 @@ void PanelWindow::Dock() {
   SavePlacement();
 }
 
+void PanelWindow::BindToForeground() {
+  DWORD pid = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+  owner_pid_ = pid == GetCurrentProcessId() ? 0 : pid;
+}
+
+void PanelWindow::OnForegroundChanged(HWND foreground) {
+  DWORD pid = 0;
+  GetWindowThreadProcessId(foreground, &pid);
+  if (!visible() || !pid || pid == GetCurrentProcessId()) return;
+  if (!owner_pid_) {
+    owner_pid_ = pid;  // shown from the tray / at start: this application now owns it
+  } else if (pid != owner_pid_) {
+    Hide();  // another application: the keyboard was for the previous one
+  }
+}
+
 void PanelWindow::Hide() {
   auto_shown_ = false;
+  owner_pid_ = 0;
   KillTimer(hwnd_, kAutoHideTimer);
   tracks_.clear();
   KillTimer(hwnd_, kLongPressTimer);
