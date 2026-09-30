@@ -52,7 +52,9 @@ class PanelWindow {
   // application comes to the front. Without a binding (tray, --show) the next
   // foreground application becomes its owner.
   void BindToForeground();
-  // UI thread: the foreground window changed (another process).
+  // UI thread: the foreground window changed (another process). Hides the
+  // panel when its application goes to the background and shows it again
+  // when that application comes back.
   void OnForegroundChanged(HWND foreground);
   // Text output: returns false when it could not be delivered (then the panel
   // falls back to SendInput).
@@ -135,7 +137,8 @@ class PanelWindow {
 
   AutoShowSettings settings_;
   bool auto_shown_ = false;
-  DWORD owner_pid_ = 0;  // application the visible panel belongs to (0: not bound yet)
+  DWORD owner_pid_ = 0;    // application the visible panel belongs to (0: not bound yet)
+  DWORD restore_pid_ = 0;  // hidden because this application went to the background: show on its return
   std::string last_focus_;  // test hook: last focus event, for the layout dump  // shown by a focus change (then also hidden by one)
   std::mutex focus_mutex_;
   std::deque<FocusEvent> focus_events_;

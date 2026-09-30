@@ -202,17 +202,28 @@ void PanelWindow::BindToForeground() {
 void PanelWindow::OnForegroundChanged(HWND foreground) {
   DWORD pid = 0;
   GetWindowThreadProcessId(foreground, &pid);
-  if (!visible() || !pid || pid == GetCurrentProcessId()) return;
+  if (!pid || pid == GetCurrentProcessId()) return;
+  if (!visible()) {
+    if (restore_pid_ && pid == restore_pid_) {  // its application is back
+      restore_pid_ = 0;
+      Show();
+      owner_pid_ = pid;
+    }
+    return;
+  }
   if (!owner_pid_) {
     owner_pid_ = pid;  // shown from the tray / at start: this application now owns it
   } else if (pid != owner_pid_) {
+    const DWORD owner = owner_pid_;
     Hide();  // another application: the keyboard was for the previous one
+    restore_pid_ = owner;
   }
 }
 
 void PanelWindow::Hide() {
   auto_shown_ = false;
   owner_pid_ = 0;
+  restore_pid_ = 0;  // hidden on purpose (or re-armed by OnForegroundChanged)
   KillTimer(hwnd_, kAutoHideTimer);
   tracks_.clear();
   KillTimer(hwnd_, kLongPressTimer);

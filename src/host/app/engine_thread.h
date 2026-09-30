@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -67,7 +68,11 @@ class EngineThread {
 
   static constexpr size_t kCandidateLimit = 120;
 
+  // True once the dictionaries are warmed up (any thread; diagnostics, tests).
+  bool ready() const { return ready_.load(); }
+
  private:
+  std::atomic<bool> ready_{false};
   void Run(RimeEngine::Options options, std::string schema);
 
   HWND notify_hwnd_ = nullptr;

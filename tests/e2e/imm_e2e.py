@@ -69,7 +69,8 @@ def main() -> int:
 
         is_open, conv = state()
         check(is_open and conv & IME_CMODE_NATIVE, f'IMM sees T9Ime open in Chinese mode (open={is_open}, conversion={conv:#x})')
-        check(typed('nihao') == '你好', 'Chinese input')
+        got = typed('nihao')
+        check(got == '你好', f'Chinese input (got {got!r})')
 
         user32.SendMessageW(hwnd, WM_APP + 3, 0, 0)  # ImmSetConversionStatus: alphanumeric
         time.sleep(0.4)

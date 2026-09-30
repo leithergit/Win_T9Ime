@@ -168,7 +168,11 @@ class HostApp {
     if (!events_->Start()) events_.reset();
     server_ = std::make_unique<ipc::RequestServer>(engine_, focus_, args.pipe_name);
     if (!server_->Start()) server_.reset();
-    if (server_) server_->SetDiagnostics([this] { return panel_->Describe(); });
+    if (server_) {
+      server_->SetDiagnostics([this] {
+        return panel_->Describe() + (engine_.ready() ? L"engine: ready\n" : L"engine: warming up\n");
+      });
+    }
     // Control API (T9Ctl.dll, t9ctl.exe): executed on the UI thread. The call
     // object is shared so a timed-out request never leaves a dangling pointer.
     ctl_ = std::make_unique<ipc::CtlServer>(

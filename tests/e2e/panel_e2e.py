@@ -142,6 +142,14 @@ def start_host(host: str, *args, attempts: int = 5):
             if out and out != '0':
                 break
         if out == str(proc.pid):
+            # Typing before the dictionaries are warm lets the first keys
+            # through (by design, for a host that is still starting).
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                if 'engine: ready' in subprocess.run([diag], capture_output=True, text=True,
+                                                     errors='replace').stdout:
+                    break
+                time.sleep(0.2)
             return proc
         proc.kill()
     raise AssertionError('could not start a T9Host that owns the pipes')

@@ -93,6 +93,7 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
       for (char c : std::string("94664486")) warm.Key(c);
       warm.Candidates(10);
     }
+    ready_ = true;
     Session session(engine, schema);
     ctx.panel = &session;
     // Windows 7 has no color emoji font: emoji candidates are disabled there.

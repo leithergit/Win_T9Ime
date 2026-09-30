@@ -162,6 +162,25 @@ def main() -> int:
         except AssertionError:
             ok = False
         check(ok, 'switching to another application hides the keyboard')
+        # D4: back to the first application: the keyboard comes back.
+        user32.GetWindowRect(edit, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        pe.wait_for(lambda: user32.GetForegroundWindow() == hwnd, what='first application in front again')
+        ok = True
+        try:
+            pe.wait_for(lambda: (panel.read() or {}).get('visible'), timeout=5, what='panel shown again')
+        except AssertionError:
+            ok = False
+        check(ok, 'returning to the application shows its keyboard again')
+        ctl('hide')
+        pe.wait_for(lambda: not (panel.read() or {}).get('visible'), timeout=5, what='panel hidden')
+        user32.GetWindowRect(other_edit, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        time.sleep(0.5)
+        user32.GetWindowRect(edit, ctypes.byref(r))
+        pe.click((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+        time.sleep(1.0)
+        check(not (panel.read() or {}).get('visible'), 'a keyboard hidden on purpose stays hidden on return')
         user32.PostMessageW(other_hwnd, pe.WM_CLOSE, 0, 0)
         try:
             other.wait(5)

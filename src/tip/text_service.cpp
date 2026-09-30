@@ -209,13 +209,7 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
 STDMETHODIMP TextService::Deactivate() {
   return Guard([&]() -> HRESULT {
     Abort();
-    {
-      // The user switched to another input method (or the thread ends): the
-      // host hides the panel if this is the foreground application.
-      ipc::Writer out(ipc::MsgType::kFocusOut);
-      out.U32(ipc::kTagFlags, ipc::kFocusDeactivated);
-      host_.Notify(std::move(out), HostClient::kKeyTimeoutMs);
-    }
+    ReportDeactivated();
     events_.Stop();
     touch_.Uninstall();
     if (message_window_) {
@@ -345,11 +339,24 @@ STDMETHODIMP TextService::OnKillThreadFocus() {
   });
 }
 
+// Windows 7 switches the thread to another language (language bar, Ctrl+Shift)
+// without deactivating us right away: this notification is the first sign.
 STDMETHODIMP TextService::OnActivated(REFCLSID clsid, REFGUID, BOOL activated) {
   return Guard([&] {
-    if (clsid == kClsidTextService && !activated) Abort();
+    if (clsid == kClsidTextService && !activated) {
+      Abort();
+      ReportDeactivated();
+    }
     return S_OK;
   });
+}
+
+// The user switched to another input method (or the thread ends): the host
+// hides the panel if this is the foreground application.
+void TextService::ReportDeactivated() {
+  ipc::Writer out(ipc::MsgType::kFocusOut);
+  out.U32(ipc::kTagFlags, ipc::kFocusDeactivated);
+  host_.Notify(std::move(out), HostClient::kKeyTimeoutMs);
 }
 
 // ---------------------------------------------------------------------------

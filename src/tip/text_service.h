@@ -71,6 +71,7 @@ class TextService final : public ITfTextInputProcessorEx,
 
   // ITfActiveLanguageProfileNotifySink
   STDMETHODIMP OnActivated(REFCLSID clsid, REFGUID profile, BOOL activated) override;
+  void ReportDeactivated();
 
   // ITfCompartmentEventSink
   STDMETHODIMP OnChange(REFGUID compartment) override;

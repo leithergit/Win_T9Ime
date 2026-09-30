@@ -223,3 +223,10 @@
   - **D2 切换到其他输入法后键盘不消失**：TIP `Deactivate` 发送带 `kFocusDeactivated` 的 FocusOut；Host 在该线程是前台线程时立即隐藏面板（不论面板怎么显示的）。即使当时没有聚焦的输入框也上报。
   - **D3 切回 T9Ime 显示的是之前的布局**：因切换到 T9Ime 而弹出时，文本模式重置为中文九宫格（数字等输入框仍按 InputScope 选布局）。
 - e2e：ctl 增加 D1（同程序内点击保持、点第二个程序隐藏；test_target 新增 `--title`、`--at`），autoshow 的切换场景增加 D2、D3（test_target 新增 WM_APP+5 切到英文键盘）。x64 七项 e2e 全过。
+
+## 2026-09-30 — D2（Win7）与 D4 修复
+
+- 触屏虚拟机复测：D1、D3 通过；D2 在 Win7 上仍不隐藏；新增 D4（切走再切回，键盘应重新显示）不符合。
+- **D2（Win7）**：Win7 用语言栏 / Ctrl+Shift 切到其他语言时不一定立即调用 TIP 的 `Deactivate`，先来的是 `ITfActiveLanguageProfileNotifySink::OnActivated(本 TIP, FALSE)`。现在两处都上报"停用"（FocusOut + kFocusDeactivated），Host 立即隐藏。Win11 上 e2e 通过，Win7 待触屏虚拟机复测。
+- **D4**：因前台程序切换而隐藏的键盘记住其所属进程，该程序回到前台时重新显示；主动隐藏（隐藏键、T9Ctl、切换输入法）不会恢复。
+- Host 诊断增加 `engine: ready / warming up`；e2e 启动 Host 后等引擎预热完成再输入（预热期间首批按键按设计直接放行，imm e2e 因此偶发）。
