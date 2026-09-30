@@ -1,4 +1,4 @@
-add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp unit/ipc_tests.cpp unit/auto_show_tests.cpp)
+add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp unit/ipc_tests.cpp unit/auto_show_tests.cpp unit/engine_tests.cpp unit/settings_tests.cpp)
 target_link_libraries(t9_unit_tests PRIVATE t9core t9panel)
 t9_win7_subsystem(t9_unit_tests CONSOLE)
 target_include_directories(t9_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}/third_party/doctest")

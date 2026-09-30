@@ -6,6 +6,7 @@ add_library(t9panel STATIC
   app/engine_thread.h app/engine_thread.cpp
   app/text_output.h app/text_output.cpp
   app/system_input.h app/system_input.cpp
+  app/input_settings.h app/input_settings.cpp
   ipc/pipe_server.h ipc/pipe_server.cpp
   ipc/focus_registry.h ipc/focus_registry.cpp
   ipc/request_server.h ipc/request_server.cpp

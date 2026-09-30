@@ -61,8 +61,22 @@ class RimeEngine {
   bool initialized() const noexcept { return api_ != nullptr; }
   rime_api_t* api() const noexcept { return api_; }
 
+  // Maintenance (blocking; destroy every Session first - the user dictionary
+  // database is opened exclusively and schemas are recompiled).
+  //
+  // Recompiles the configuration including the user's *.custom.yaml (fuzzy
+  // pinyin, page size) into user_dir/build. Takes seconds.
+  bool Redeploy();
+  // Learned words of dictionary `dict` (e.g. "rime_ice") as a text file.
+  // Return the number of entries, or -1 on failure.
+  int ExportUserDict(const std::string& dict, const std::string& file);
+  int ImportUserDict(const std::string& dict, const std::string& file);
+  // Deletes everything learned into `dict`.
+  bool ClearUserDict(const std::string& dict);
+
  private:
   rime_api_t* api_ = nullptr;
+  Options options_;
 };
 
 // One Rime session plus the nine-key front end (pinyin bar, readable preedit,

@@ -1,6 +1,7 @@
 #include "rime_engine.h"
 
 #include <rime_api.h>
+#include <rime_levers_api.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -44,8 +45,56 @@ std::string_view SelectedPrefix(std::string_view raw_preedit) {
 
 RimeEngine::~RimeEngine() { Finalize(); }
 
+namespace {
+
+RimeLeversApi* Levers(rime_api_t* api) {
+  RimeModule* module = api ? api->find_module("levers") : nullptr;
+  return module && module->get_api ? reinterpret_cast<RimeLeversApi*>(module->get_api()) : nullptr;
+}
+
+std::filesystem::path Utf8Path(const std::string& s) { return std::filesystem::path(std::u8string(s.begin(), s.end())); }
+
+}  // namespace
+
+bool RimeEngine::Redeploy() {
+  if (!api_) return false;
+  api_->cleanup_all_sessions();
+  // Full check: compile every schema again, whatever the file timestamps say.
+  if (!api_->start_maintenance(True)) return false;
+  api_->join_maintenance_thread();
+  return true;
+}
+
+int RimeEngine::ExportUserDict(const std::string& dict, const std::string& file) {
+  RimeLeversApi* levers = Levers(api_);
+  if (!levers) return -1;
+  api_->cleanup_all_sessions();
+  return levers->export_user_dict(dict.c_str(), file.c_str());
+}
+
+int RimeEngine::ImportUserDict(const std::string& dict, const std::string& file) {
+  RimeLeversApi* levers = Levers(api_);
+  if (!levers) return -1;
+  api_->cleanup_all_sessions();
+  return levers->import_user_dict(dict.c_str(), file.c_str());
+}
+
+bool RimeEngine::ClearUserDict(const std::string& dict) {
+  if (!api_) return false;
+  // The database stays open inside librime while it is initialized: restart it.
+  const Options options = options_;
+  Finalize();
+  std::error_code ec;
+  std::filesystem::remove_all(Utf8Path(options.user_dir) / (dict + ".userdb"), ec);
+  const bool removed = !ec;
+  // Snapshots written by librime's sync would bring the words back.
+  std::filesystem::remove(Utf8Path(options.user_dir) / (dict + ".userdb.txt"), ec);
+  return Initialize(options) && removed;
+}
+
 bool RimeEngine::Initialize(const Options& options) {
   if (api_) return true;
+  options_ = options;
   std::error_code ec;
   const std::u8string user_dir(options.user_dir.begin(), options.user_dir.end());
   std::filesystem::create_directories(std::filesystem::path(user_dir), ec);
