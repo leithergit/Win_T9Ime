@@ -275,3 +275,8 @@
 - 修复（`src/tip/touch_tracker.*`、`TextService::ReportFocus`）：TouchTracker 记录最近一次按下的目标窗口（`WM_POINTERDOWN`、新增 `WM_NCPOINTERDOWN`（标题栏）、WH_MOUSE 的鼠标按下）。焦点进入时，若本线程最近看到过按下，只有按下的窗口是焦点窗口、在焦点窗口里面、或是包含焦点窗口的非顶层控件（组合框与其编辑框）才算触摸；按在按钮、标题栏、对话框背景上不算。本线程没看到按下时保持原判断（消息来源）。t9diag 的 touch 行显示 `on=<按下窗口类名>(focus)`。
 - 回归：`e2e_touch` 增加：手指点 TestHost 的"隐藏键盘""显示键盘""切换"×2、"数字""符号""英文"，断言显隐与布局保持 1.5 s 不被改回；手指点文本框本身仍弹出；C++ 显示键盘后手指点 C# 窗口标题栏 → 隐藏且不再弹出，C# 的"显示键盘""隐藏键盘"有效。修复前 7 项失败，修复后全过。x64 八项 e2e 全过；autoshow / tip 用 x86 test_target 也通过；x64、x86 单元测试全过。
 - 环境：本机（Win11）启用了 .NET Framework 3.5（重启后生效）以便用 v3.5 csc 构建 TestHost.CS.exe；重启前本地调试用的是 v4 csc 临时编译的版本（未入库）。
+
+## 2026-09-30 — 触屏 4 个问题：Win11 触屏真实手指复测通过
+
+- 用户在 Win11 触屏机上用手指复测问题 1–4：基本修复。t9diag 录制显示真实长按触发 long-press，点 TestHost 按钮后的焦点进入判为非触摸（`-> none`）。
+- 待办：Win7 触屏机复测（M5 测试包）；.NET 3.5 启用后需重启本机，再用 v3.5 csc 重建 TestHost.CS.exe 并打包。
