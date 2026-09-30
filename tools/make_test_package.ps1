@@ -98,6 +98,12 @@ if exist "%SystemRoot%\SysWOW64\regsvr32.exe" (
 ) else (
   "%SystemRoot%\System32\regsvr32.exe" /s "%~dp0x86\T9Tip.dll" || goto fail
 )
+rem Start the host now (the installer will start it at logon). Through
+rem explorer.exe so it runs with the normal (not elevated) user token.
+set ARCH=x86
+if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" set ARCH=x64
+if /i "%PROCESSOR_ARCHITEW6432%"=="AMD64" set ARCH=x64
+tasklist /fi "imagename eq T9Host.exe" | find /i "T9Host.exe" > nul || explorer.exe "%~dp0%ARCH%\T9Host.exe"
 echo Registered. Choose "T9Ime" in the language bar (Chinese - Simplified).
 pause
 exit /b 0

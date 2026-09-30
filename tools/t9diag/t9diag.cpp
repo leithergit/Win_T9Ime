@@ -133,34 +133,41 @@ void Pipe() {
 
 }  // namespace
 
+void Stamp() {
+  SYSTEMTIME t;
+  GetLocalTime(&t);
+  wchar_t stamp[32];
+  swprintf_s(stamp, L"--- %02d:%02d:%02d.%03d", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+  Line(stamp);
+}
+
+// Keeps (re)connecting for the whole period: the host may not be running yet
+// (it starts when an application first uses T9Ime) or may be restarted.
 void Watch(int seconds) {
-  ipc::PipeClient c;
-  if (!c.Connect(ipc::PipeName(ipc::Endpoint::kRequest), 1000)) {
-    Line(L"watch: cannot connect to T9Host");
-    return;
-  }
   Line(L"watching for " + std::to_wstring(seconds) + L" s - tap input fields now");
+  std::fflush(stdout);
+  ipc::PipeClient c;
   std::wstring last;
   const ULONGLONG end = GetTickCount64() + static_cast<ULONGLONG>(seconds) * 1000;
   while (GetTickCount64() < end) {
+    std::wstring text;
     std::vector<uint8_t> resp;
-    if (!c.Call(ipc::Writer(ipc::MsgType::kDiagnostics).Finish(), &resp, 2000)) {
-      Line(L"watch: host stopped answering");
-      return;
+    if (!c.connected() && !c.Connect(ipc::PipeName(ipc::Endpoint::kRequest), 200)) {
+      text = L"T9Host not reachable (not started yet?)";
+    } else if (!c.Call(ipc::Writer(ipc::MsgType::kDiagnostics).Finish(), &resp, 2000)) {
+      text = L"T9Host stopped answering";
+    } else {
+      text = ipc::Reader(resp.data(), resp.size()).StrOr(ipc::kTagText);
     }
-    const std::wstring text = ipc::Reader(resp.data(), resp.size()).StrOr(ipc::kTagText);
     if (text != last) {
-      SYSTEMTIME t;
-      GetLocalTime(&t);
-      wchar_t stamp[32];
-      swprintf_s(stamp, L"--- %02d:%02d:%02d.%03d", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
-      Line(stamp);
+      Stamp();
       Line(text);
       std::fflush(stdout);
       last = text;
     }
     Sleep(200);
   }
+  Line(L"watch finished");
 }
 
 int wmain(int argc, wchar_t** argv) {
