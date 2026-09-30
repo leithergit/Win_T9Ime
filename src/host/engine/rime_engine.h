@@ -27,6 +27,7 @@ struct EngineState {
   std::string input;        // raw Rime input, e.g. "zhong'4486"
   std::string raw_preedit;  // preedit as returned by librime
   std::string preedit;      // display text; readable pinyin for nine-key schemas
+  int cursor = -1;          // caret in `preedit`, UTF-8 byte offset (-1 = end)
   std::vector<t9::BarItem> pinyin_bar;  // nine-key schemas only
   std::vector<Candidate> page;          // current candidate page
   int page_no = 0;
@@ -82,6 +83,7 @@ class Session {
   void Enter();
   void Space();
   void Escape();
+  void Clear();              // drop the composition without side effects
   bool PickBar(size_t index);                // index into State().pinyin_bar
   bool SelectCandidate(size_t global_index);
   bool SelectOnPage(size_t index);

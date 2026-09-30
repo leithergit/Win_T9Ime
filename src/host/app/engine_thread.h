@@ -7,6 +7,8 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -28,9 +30,18 @@ struct EngineSnapshot {
   std::vector<Passthrough> passthrough;  // sent after state.commit
 };
 
+// State owned by the engine thread, reachable from Invoke().
+struct EngineContext {
+  RimeEngine* engine = nullptr;  // null if initialization failed
+  // Physical-keyboard sessions (rime_ice), one per TIP connection.
+  std::map<uint64_t, std::unique_ptr<Session>> clients;
+  Session* Client(uint64_t id);
+};
+
 class EngineThread {
  public:
   using Command = std::function<void(Session&, std::vector<Passthrough>&)>;
+  using Task = std::function<void(EngineContext&)>;
 
   EngineThread() = default;
   EngineThread(const EngineThread&) = delete;
@@ -45,6 +56,10 @@ class EngineThread {
   // Runs `cmd` on the engine thread and publishes a snapshot afterwards.
   void Post(Command cmd);
 
+  // Runs `task` on the engine thread and waits until it has finished (IPC
+  // handler threads). Returns false if the engine thread is stopping.
+  bool Invoke(Task task);
+
   // UI thread: takes all snapshots published so far, oldest first.
   std::deque<EngineSnapshot> Take();
 
@@ -58,7 +73,12 @@ class EngineThread {
   std::thread thread_;
   std::mutex mutex_;
   std::condition_variable cv_;
-  std::deque<Command> commands_;
+  struct Item {
+    Command command;                 // panel command (publishes a snapshot)
+    Task task;                       // or an Invoke() task
+    std::promise<void>* done = nullptr;
+  };
+  std::deque<Item> commands_;
   std::deque<EngineSnapshot> snapshots_;
   bool stop_ = false;
 };

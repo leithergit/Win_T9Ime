@@ -3,8 +3,9 @@ add_library(t9panel STATIC
   panel/panel_renderer.h panel/panel_renderer.cpp
   panel/panel_window.h panel/panel_window.cpp
   app/engine_thread.h app/engine_thread.cpp
-  app/text_output.h app/text_output.cpp)
-target_include_directories(t9panel PUBLIC panel app)
+  app/text_output.h app/text_output.cpp
+  ipc/request_server.h ipc/request_server.cpp)
+target_include_directories(t9panel PUBLIC panel app ipc)
 target_link_libraries(t9panel PUBLIC t9engine t9common d2d1 dwrite)
 
 add_executable(T9Host WIN32 app/main.cpp app/T9Host.manifest)

@@ -3,6 +3,7 @@
 //
 //   T9Host.exe [--data <dir>] [--user <dir>] [--settings <ini>] [--show]
 //              [--input pointer|touch|mouse] [--dump-layout <file>] [--no-single-instance]
+//              [--pipe <request pipe name>]
 
 #include <windows.h>
 #include <sddl.h>
@@ -14,6 +15,7 @@
 
 #include "engine_thread.h"
 #include "panel_window.h"
+#include "request_server.h"
 #include "text_output.h"
 #include "win_compat.h"
 
@@ -29,7 +31,7 @@ constexpr UINT kCmdExit = 101;
 constexpr UINT kCmdDock = 102;
 
 struct Args {
-  std::wstring data, user, settings, dump_layout;
+  std::wstring data, user, settings, dump_layout, pipe_name;
   panel::InputMode input = compat::HasPointerInput() ? panel::InputMode::kPointer : panel::InputMode::kTouch;
   bool show = false;
   bool single_instance = true;
@@ -79,6 +81,7 @@ Args ParseArgs() {
     else if (k == L"--user") a.user = next();
     else if (k == L"--settings") a.settings = next();
     else if (k == L"--dump-layout") a.dump_layout = next();
+    else if (k == L"--pipe") a.pipe_name = next();
     else if (k == L"--show") a.show = true;
     else if (k == L"--no-single-instance") a.single_instance = false;
     else if (k == L"--input") {
@@ -125,6 +128,10 @@ class HostApp {
     eo.shared_dir = WideToUtf8(args.data);
     eo.user_dir = WideToUtf8(args.user);
     engine_.Start(eo, "t9", panel_->hwnd(), panel::PanelWindow::kEngineMessage);
+    // Physical-keyboard requests from the TIP. Failure means another host owns
+    // the pipe (e.g. a test instance); the panel still works.
+    server_ = std::make_unique<ipc::RequestServer>(engine_, args.pipe_name);
+    if (!server_->Start()) server_.reset();
 
     AddTrayIcon();
     if (args.show) panel_->Show();
@@ -133,6 +140,7 @@ class HostApp {
 
   void Shutdown() {
     RemoveTrayIcon();
+    server_.reset();  // before the engine: connection threads call into it
     engine_.Stop();
     panel_.reset();
     if (hwnd_) DestroyWindow(hwnd_);
@@ -203,6 +211,7 @@ class HostApp {
 
   HWND hwnd_ = nullptr;
   EngineThread engine_;
+  std::unique_ptr<ipc::RequestServer> server_;
   std::unique_ptr<panel::PanelWindow> panel_;
 };
 

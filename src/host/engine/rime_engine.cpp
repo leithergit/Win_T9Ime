@@ -159,6 +159,11 @@ void Session::Enter() {
 
 void Session::Space() { ProcessKey(kSpace); }
 
+void Session::Clear() {
+  api_->clear_composition(id_);
+  composer_.Reset();
+}
+
 void Session::Escape() {
   ProcessKey(kEscape);
   composer_.Reset();
@@ -214,11 +219,14 @@ EngineState Session::State() {
       s.page.push_back({Str(ctx.menu.candidates[i].text), Str(ctx.menu.candidates[i].comment)});
     }
     s.preedit = s.raw_preedit;
+    s.cursor = ctx.composition.cursor_pos;
     if (schema_id_ == "t9_eng" && !s.page.empty()) {
       // English nine-key: the digits mean nothing to the user; show the word.
       const int h = std::clamp(s.highlighted, 0, static_cast<int>(s.page.size()) - 1);
       s.preedit = s.page[h].text;
+      s.cursor = -1;
     } else if (NineKey() && !s.input.empty()) {
+      s.cursor = -1;
       const std::string_view prefix = SelectedPrefix(s.raw_preedit);
       std::string rest(s.raw_preedit.substr(prefix.size()));
       std::erase(rest, ' ');

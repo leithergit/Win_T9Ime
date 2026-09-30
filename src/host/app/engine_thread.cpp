@@ -19,14 +19,40 @@ void EngineThread::Stop() {
   }
   cv_.notify_all();
   if (thread_.joinable()) thread_.join();
+  // Release Invoke() callers whose tasks never ran.
+  std::lock_guard lock(mutex_);
+  for (Item& item : commands_) {
+    if (item.done) item.done->set_value();
+  }
+  commands_.clear();
+}
+
+Session* EngineContext::Client(uint64_t id) {
+  if (!engine) return nullptr;
+  auto& session = clients[id];
+  if (!session) session = std::make_unique<Session>(*engine, "rime_ice");
+  return session.get();
 }
 
 void EngineThread::Post(Command cmd) {
   {
     std::lock_guard lock(mutex_);
-    commands_.push_back(std::move(cmd));
+    commands_.push_back({std::move(cmd), nullptr, nullptr});
   }
   cv_.notify_one();
+}
+
+bool EngineThread::Invoke(Task task) {
+  std::promise<void> done;
+  auto future = done.get_future();
+  {
+    std::lock_guard lock(mutex_);
+    if (stop_ || !thread_.joinable()) return false;
+    commands_.push_back({nullptr, std::move(task), &done});
+  }
+  cv_.notify_one();
+  future.wait();
+  return true;
 }
 
 std::deque<EngineSnapshot> EngineThread::Take() {
@@ -36,10 +62,25 @@ std::deque<EngineSnapshot> EngineThread::Take() {
 
 void EngineThread::Run(RimeEngine::Options options, std::string schema) {
   RimeEngine engine;
+  EngineContext ctx;
   if (!engine.Initialize(options)) {
     PostMessageW(notify_hwnd_, notify_msg_, 1, 0);
+    // Keep serving Invoke() so IPC callers get an answer (ctx.engine == null).
+    for (;;) {
+      Item item;
+      {
+        std::unique_lock lock(mutex_);
+        cv_.wait(lock, [&] { return stop_ || !commands_.empty(); });
+        if (stop_) break;
+        item = std::move(commands_.front());
+        commands_.pop_front();
+      }
+      if (item.task) item.task(ctx);
+      if (item.done) item.done->set_value();
+    }
     return;
   }
+  ctx.engine = &engine;
   {
     Session session(engine, schema);
     // Windows 7 has no color emoji font: emoji candidates are disabled there.
@@ -60,19 +101,25 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
     publish({});
 
     for (;;) {
-      Command cmd;
+      Item item;
       {
         std::unique_lock lock(mutex_);
         cv_.wait(lock, [&] { return stop_ || !commands_.empty(); });
         if (stop_) break;
-        cmd = std::move(commands_.front());
+        item = std::move(commands_.front());
         commands_.pop_front();
       }
+      if (item.task) {
+        item.task(ctx);
+        if (item.done) item.done->set_value();
+        continue;
+      }
       std::vector<Passthrough> passthrough;
-      cmd(session, passthrough);
+      item.command(session, passthrough);
       session.SetOption("emoji", emoji);  // schema switches reset switches
       publish(std::move(passthrough));
     }
+    ctx.clients.clear();
   }
   engine.Finalize();
 }

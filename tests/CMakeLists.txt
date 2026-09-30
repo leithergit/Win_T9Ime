@@ -1,8 +1,9 @@
-add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp)
+add_executable(t9_unit_tests unit/main.cpp unit/t9_tests.cpp unit/panel_layout_tests.cpp unit/ipc_tests.cpp)
 target_link_libraries(t9_unit_tests PRIVATE t9core t9panel)
 t9_win7_subsystem(t9_unit_tests CONSOLE)
 target_include_directories(t9_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}/third_party/doctest")
-target_compile_definitions(t9_unit_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+target_compile_definitions(t9_unit_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS T9_TEST_DATA_DIR="${T9_DATA_DIR}")
+add_dependencies(t9_unit_tests rime_data copy_rime_dll)
 add_test(NAME unit COMMAND t9_unit_tests)
 
 # Engine regression: run each tests/regress/*.t9 script through t9repl and
