@@ -15,7 +15,7 @@ foreach ($arch in 'x86', 'x64') {
     $bin = Join-Path $root "out\build\$arch-Release\bin"
     if (-not (Test-Path "$bin\T9Host.exe")) { throw "build $arch-Release first" }
     New-Item -ItemType Directory -Force "$stage\$arch" | Out-Null
-    Copy-Item "$bin\t9repl.exe", "$bin\rime.dll", "$bin\T9Host.exe", "$bin\test_target.exe" "$stage\$arch"
+    Copy-Item "$bin\t9repl.exe", "$bin\rime.dll", "$bin\T9Host.exe", "$bin\test_target.exe", "$bin\T9Tip.dll" "$stage\$arch"
 }
 # Data is architecture independent. robocopy /COPY:DAT keeps timestamps.
 robocopy (Join-Path $root 'out\build\x64-Release\bin\data') "$stage\data" /E /COPY:DAT /DCOPY:T /XF .t9ime-data-stamp /NFL /NDL /NJH /NJS | Out-Null
@@ -71,6 +71,42 @@ start "" "%ARCH%\T9Host.exe" --data "%~dp0data" --user "%TEMP%\t9ime-panel-user"
 start "" "%ARCH%\test_target.exe"
 endlocal
 '@ | Set-Content -Encoding ascii "$stage\panel.bat"
+
+# TIP registration (needs "Run as administrator"). 64-bit Windows registers both
+# DLLs so 32-bit applications work too.
+@'
+@echo off
+rem Right-click -> Run as administrator. Registers the T9Ime input method.
+setlocal
+cd /d "%~dp0"
+if exist "%SystemRoot%\SysWOW64\regsvr32.exe" (
+  "%SystemRoot%\System32\regsvr32.exe" /s "%~dp0x64\T9Tip.dll" || goto fail
+  "%SystemRoot%\SysWOW64\regsvr32.exe" /s "%~dp0x86\T9Tip.dll" || goto fail
+) else (
+  "%SystemRoot%\System32\regsvr32.exe" /s "%~dp0x86\T9Tip.dll" || goto fail
+)
+echo Registered. Choose "T9Ime" in the language bar (Chinese - Simplified).
+pause
+exit /b 0
+:fail
+echo Registration FAILED - did you run it as administrator?
+pause
+exit /b 1
+'@ | Set-Content -Encoding ascii "$stage\register.bat"
+@'
+@echo off
+rem Right-click -> Run as administrator. Removes the T9Ime input method.
+setlocal
+taskkill /im T9Host.exe /f > nul 2>&1
+if exist "%SystemRoot%\SysWOW64\regsvr32.exe" (
+  "%SystemRoot%\System32\regsvr32.exe" /s /u "%~dp0x64\T9Tip.dll"
+  "%SystemRoot%\SysWOW64\regsvr32.exe" /s /u "%~dp0x86\T9Tip.dll"
+) else (
+  "%SystemRoot%\System32\regsvr32.exe" /s /u "%~dp0x86\T9Tip.dll"
+)
+echo Unregistered. Log off or restart before deleting this folder.
+pause
+'@ | Set-Content -Encoding ascii "$stage\unregister.bat"
 
 $zip = Join-Path $dist "T9Ime-$Milestone-test.zip"
 $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"

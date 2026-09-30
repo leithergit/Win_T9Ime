@@ -85,7 +85,11 @@ class TextService final : public ITfTextInputProcessorEx,
   bool KeyboardUsable(ITfContext* context);
 
   // Results from the host -> composition, candidates, mode indicator.
-  void Apply(ITfContext* context, const ipc::Result& result);
+  // `outside_key_event`: called from a window message (candidate click, later
+  // panel pushes) rather than a key sink. Then a synchronous edit session is
+  // tried first: asynchronous ones may be deferred until the next key in
+  // CUAS (IMM32) documents.
+  void Apply(ITfContext* context, const ipc::Result& result, bool outside_key_event = false);
   HRESULT ApplyInSession(TfEditCookie ec, ITfContext* context, const ipc::Result& result);
   bool StartComposition(TfEditCookie ec, ITfContext* context);
   void EndComposition(TfEditCookie ec, ITfContext* context, bool clear);

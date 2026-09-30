@@ -26,6 +26,9 @@ add_test(NAME win7_imports
 # End-to-end panel test: drives the real mouse cursor, needs an interactive desktop.
 add_executable(test_target WIN32 probes/test_target.cpp)
 target_link_libraries(test_target PRIVATE ole32 shell32 uuid)
+add_executable(tip_activate probes/tip_activate.cpp)
+target_link_libraries(tip_activate PRIVATE ole32 uuid)
+t9_win7_subsystem(tip_activate CONSOLE)
 t9_win7_subsystem(test_target WINDOWS)
 add_test(NAME e2e_panel
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/panel_e2e.py"

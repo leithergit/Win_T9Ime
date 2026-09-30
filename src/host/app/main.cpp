@@ -93,7 +93,12 @@ Args ParseArgs() {
   }
   LocalFree(argv);
   const std::wstring appdata = AppDataDir();
-  if (a.data.empty()) a.data = ExeDir() + L"\\data";
+  if (a.data.empty()) {
+    // Installed layout: <dir>\data. Test packages keep x86\ and x64\ next to
+    // a shared data\ directory.
+    a.data = ExeDir() + L"\\data";
+    if (GetFileAttributesW(a.data.c_str()) == INVALID_FILE_ATTRIBUTES) a.data = ExeDir() + L"\\..\\data";
+  }
   if (a.user.empty()) a.user = appdata + L"\\Rime";
   if (a.settings.empty()) {
     CreateDirectoryW(appdata.c_str(), nullptr);

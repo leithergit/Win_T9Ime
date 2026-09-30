@@ -5,6 +5,8 @@
 #include <msctf.h>
 #include <shellapi.h>
 
+void RestorePrevious();
+
 namespace {
 HWND g_edit = nullptr;
 WNDPROC g_edit_proc = nullptr;
@@ -36,6 +38,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SETFOCUS:
       SetFocus(g_edit);
       return 0;
+    case WM_CLOSE:
+      RestorePrevious();  // still in the foreground: restores the user's input method
+      DestroyWindow(hwnd);
+      return 0;
     case WM_DESTROY:
       PostQuitMessage(0);
       return 0;
@@ -48,12 +54,32 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 const CLSID kClsidT9Tip = {0xbb2f3ba4, 0x3b7a, 0x414a, {0xa9, 0x8f, 0x08, 0xc1, 0x00, 0xe5, 0x44, 0x7e}};
 const GUID kGuidT9Profile = {0x3ea4ff8c, 0xcaf7, 0x456f, {0x95, 0x42, 0x1c, 0x0f, 0x1e, 0xf2, 0x63, 0x5e}};
 
+// With the default per-user input method mode (Windows 8+), activating a
+// profile in the foreground process switches the user's input method
+// everywhere. Remember the previous profile and restore it on exit.
+TF_INPUTPROCESSORPROFILE g_previous = {};
+bool g_have_previous = false;
+
+void RestorePrevious() {
+  if (!g_have_previous) return;
+  ITfInputProcessorProfileMgr* mgr = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
+    return;
+  }
+  mgr->ActivateProfile(g_previous.dwProfileType, g_previous.langid, g_previous.clsid, g_previous.guidProfile,
+                       g_previous.hkl, TF_IPPMF_FORPROCESS);
+  mgr->Release();
+  g_have_previous = false;
+}
+
 bool ActivateT9Tip() {
   ITfInputProcessorProfileMgr* mgr = nullptr;
   if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
                               IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
     return false;
   }
+  g_have_previous = SUCCEEDED(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &g_previous));
   const HRESULT hr = mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED),
                                           kClsidT9Tip, kGuidT9Profile, nullptr,
                                           TF_IPPMF_FORPROCESS | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE);

@@ -3,7 +3,7 @@
 新会话先读本文件和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M2（Host 与触屏面板，SendInput 上屏）已完成，M1/M2 真机测试包待同事回收。下一步：M3 TIP 骨架。
+M3（TIP：物理键盘全拼）已完成，M1–M3 真机测试包待同事回收。下一步：M4 面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -19,6 +19,8 @@ M2（Host 与触屏面板，SendInput 上屏）已完成，M1/M2 真机测试包
 - 依赖：`third_party/fetch_librime.ps1`（librime 1.17.0 x64/x86 + opencc，SHA-256 校验）、`data/fetch_rime_ice.ps1`（rime-ice 固定 commit）。两者产物不入库。
 - 产物布局与安装目录一致：`out/build/<preset>/bin/{T9Host.exe,t9repl.exe,rime.dll,data/}`。Rime 数据由构建目标 `rime_data`（`tools/prepare_data.py`）生成到 `bin/data`（首次约 45 s，有 stamp 缓存）。
 - 测试：默认 `ctest -LE e2e`；`e2e_panel`（`tests/e2e/panel_e2e.py`，用真实鼠标点面板往 test_target 输入，会移动光标，需要交互桌面）用 `ctest -L e2e` 单独跑。其余：`unit`（doctest）、`regress_*`（`tests/regress/*.t9` 经 t9repl 与 `.expected` 快照比对；改动后用 `run_regress.py --update` 重写并审阅 diff）、`win7_imports`（`tools/check_imports` 检查 Win7 不存在的静态导入）。
+- TIP 开发注册：`pwsh -File tools/dev_register.ps1 [-Unregister]`（会弹 UAC；注册 x64 与 x86 的 `out/build/*/bin/T9Tip.dll`）。注册后 DLL 被各应用加载而锁定，构建时 `tools/move_locked.py` 在链接前把旧 DLL 改名为 `.old-*`。
+- TIP 端到端：`py -3 tests/e2e/tip_e2e.py --host <x64 bin>/T9Host.exe --target <x64|x86 bin>/test_target.exe`（`ctest -L e2e` 也会跑；未注册时跳过）。构建前先 `taskkill /im T9Host.exe /f`，否则 exe 被占用。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
 - T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance`。
 - 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
@@ -38,6 +40,10 @@ M2（Host 与触屏面板，SendInput 上屏）已完成，M1/M2 真机测试包
 - rime-ice 不带 opencc s2t 数据，需从 rime-deps 包补。
 - Weasel 的 WeaselUI 静态导入 Shcore（Win8.1+），且开启了 OpenMP（vcomp140.dll）——都必须去掉/改动态加载。
 - Windows 大小写不敏感：文档目录是 `Docs/`。
+- **Win8+ 输入法默认按用户全局生效**：在前台进程里用 `TF_IPPMF_FORPROCESS` 激活 T9Ime，会切换用户在所有程序里的输入法。test_target 激活前记下原 profile、关闭时恢复；写新测试时照做。控制台进程里的 `GetActiveProfile` 不代表用户当前的输入法。
+- TIP 必须放行 `VK_PACKET`（SendInput 的 KEYEVENTF_UNICODE 文本），否则面板降级路径和屏幕键盘会被当成按键组字。
+- 在按键回调之外（窗口消息里）应用结果时，先请求 `TF_ES_SYNC` 编辑会话，失败再异步；否则 CUAS 文档里的异步会话可能拖到下一次按键才执行。
+- 测试脚本要先 `SetProcessDpiAwarenessContext(-4)` 再取窗口坐标，否则非 DPI 感知的脚本拿到逻辑坐标，点击会偏。用点击而不是 `SetForegroundWindow` 让测试窗口获得焦点（后者受前台锁限制）。
 - 面板鼠标输入：先 `PointerUp` 再 `ReleaseCapture`——`ReleaseCapture` 触发的 `WM_CAPTURECHANGED` 会取消按下。
 - `Session::State()` 会取走待上屏文字，引擎线程命令里不要调用它（用 `Input()/HasInput()`）。
 - 面板的所有输出（上屏、退格/回车透传、直接符号）都经引擎线程的 Passthrough 排队，保证顺序；不要在 UI 线程直接 SendInput。

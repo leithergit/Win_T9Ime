@@ -55,6 +55,9 @@ uint32_t TranslateVirtualKey(WPARAM vk, bool extended, UINT scan) {
 }  // namespace
 
 bool ConvertKey(WPARAM vk, LPARAM lparam, const BYTE key_state[256], bool key_up, KeyEvent* out) {
+  // VK_PACKET carries text injected with KEYEVENTF_UNICODE (the touch panel's
+  // fallback path, on-screen keyboards): it is finished text, never input.
+  if (vk == VK_PACKET) return false;
   constexpr BYTE kDown = 0x80, kToggled = 0x01;
   out->mask = 0;
   if (key_state[VK_SHIFT] & kDown) out->mask |= mask::kShift;

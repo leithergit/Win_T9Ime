@@ -86,7 +86,6 @@ bool CandidateWindow::EnsureWindow(HWND owner) {
   WNDCLASSEXW wc = {sizeof(wc)};
   if (!GetClassInfoExW(g_module, kClassName, &wc)) {
     wc = {sizeof(wc)};
-    wc.style = CS_IME;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = g_module;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);

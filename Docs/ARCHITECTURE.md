@@ -98,6 +98,11 @@ Docs/              SPEC、ARCHITECTURE、PLAN、research/
 - 连接失败时按 §8 策略尝试恢复 Host（限频，异步线程）。
 - 管道 I/O 由线程池完成，请求投递到引擎线程；不持引擎锁调用 Shell_NotifyIcon（Weasel `d73f629` 的死锁教训）。
 
+### 3.3a 实现现状（M3）
+- `src/common/protocol`、`src/common/pipe`：TLV 编解码、管道名（会话 ID + 用户 SID）、安全描述符（Win8+ 加 AC 与 S-1-15-2-2；Win7 只有 SY/用户 + Low 标签）、OVERLAPPED 读写与超时。
+- Host `src/host/ipc/request_server`：监听线程 + 每连接一个线程；请求经 `EngineThread::Invoke` 在引擎线程执行；每个连接一个 rime_ice session，断开即销毁。
+- TIP `src/tip/host_client`：按键超时 150 ms、其他 500 ms；连接失败指数退避（0.5→5 s）；调用失败后 2 s 内不再尝试（Host 挂起时不拖慢每个按键）；仅在普通中完整性、非提权、非 AppContainer 进程中用 CreateProcess 拉起同目录的 T9Host（限频 10 s，线程持有模块引用）。计划任务方案留到 M7 安装包。
+
 ### 3.4 消息集（初版）
 TIP→Host：`Hello{pid,tid,exe,isAppContainer,isElevated,osBuild}`、`FocusIn{seq,hwnd,inputScopes[],readOnly,touchOrigin}`、`FocusOut`、`Key{vk,scan,flags,ibusKeycode,mask,isTest}`、`CaretRect{rect,dpi}`、`SelectCandidate{index}`、`ChangePage`、`CompartmentChanged{open,conversion}`、`UIElementShown{bool}`、`PushAck{seq,consumed}`。
 Host→TIP（响应或推送）：`Result{eaten, commit, preedit, cursor, candidates[], status{ascii,composing,schema}, styleRev}`、`Style{…}`（仅样式版本变化时）。
@@ -173,6 +178,8 @@ Ctl：见 §7。
 降级：焦点窗口没有我们的 TIP 连接（非 TSF 应用，或切换 IME 失败）→ `SendInput(KEYEVENTF_UNICODE)` 上屏最终文本并记录（Debug 日志，不含内容）。对管理员进程受 UIPI 限制无效（§6.6）。
 
 ### 6.4 自动切换到本 IME（U6）
+M3 实测（Win11 26200）：从外部控制台进程调用 `ActivateProfile(FORSESSION|DONTCARE…)` 后新启动的记事本使用 T9Ime；在前台进程中 `FORPROCESS` 激活会改变用户全局输入法（默认"按用户"模式）。切回其他语言的键盘布局时不能带 DONTCARE 标志（否则只是标记）。已运行程序的切换效果仍需 M4 实测。
+
 1. 面板被点击，Host 发现焦点线程没有已激活的本 TIP 实例；
 2. `ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, 0x0804, CLSID_T9Tip, GUID_Profile, NULL, TF_IPPMF_FORSESSION|TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE)`；
 3. 300 ms 内 TIP 未上报激活 → `PostMessage(hwndFocus, WM_INPUTLANGCHANGEREQUEST, INPUTLANGCHANGE_SYSCHARSET, zh-CN HKL)`（对管理员进程会被 UIPI 拦截）；

@@ -85,3 +85,25 @@
 **下一步**
 - 回收 M1/M2 真机结果。
 - M3：P3 探针（GetTextExt 坐标、Win7 SDDL、AppContainer 管道）；Weasel fork 裁剪出 TIP、CMake 化、去 boost、新 IPC、注册注销、物理键盘全拼。
+
+## 2026-09-30 — M3 TIP 骨架（物理键盘全拼）
+
+**完成**
+- IPC：TLV 协议、会话+SID 管道名与 DACL（Win7/Win8+ 分支）、带超时的重叠 I/O；Host 请求服务（每连接一个线程、一个 rime_ice session，经引擎线程执行）。
+- T9Tip.dll（x64/x86，217 KB，只依赖系统 DLL，Win7 导入检查通过）：参照 Weasel WeaselTSF 重写——按键（test/key 结果按实例缓存）、组字（内联 preedit + 虚线显示属性）、进程内 D2D 候选窗（鼠标点选、滚轮翻页）、UIElement、compartment 双向同步（开关、中英）、语言栏"中/英"按钮、注册与注销（幂等）。上游对照见 `third_party/weasel/UPSTREAM.md`。
+- 健壮性：Host 不在时按键立即透传（3 键 0.25 s），调用失败后退避；Host 被杀后由 TIP 自动拉起（仅普通权限进程）；所有 COM 入口异常不外抛；DllMain 不做任何工作。
+- 测试：IPC 单元/集成测试（含超时）；`tip_e2e.py`（x64/x86 各 16 项全过：组字、候选窗、鼠标点选、数字选词、回车、Esc、Shift 中英、Ctrl 透传、杀 Host 不卡、自动拉起）；Win11 新版记事本实测通过（`apps_e2e.py`，手动探针）。
+- 测试包 `dist/M3/`（含 register.bat / unregister.bat）+ `Docs/testing/M3-checklist.md`。
+
+**过程中发现并修复**
+- TIP 把 SendInput 的 `VK_PACKET` 当按键组字 → 放行。
+- 窗口消息里应用结果时异步编辑会话被延后 → 先同步再异步。
+- 测试工具问题：CapsLock、DPI 坐标、前台锁、`FORPROCESS` 会改用户全局输入法（test_target 现在会恢复）。
+
+**已知问题 / 待办**
+- 开发过程中用户的全局输入法被测试切到了 T9Ime，未能自动恢复原状态，已请用户用 Win+Space 确认。
+- A14（点击别处时未上屏拼音的去留）在 CUAS 下的行为待真机记录。
+- 未做：InputScope、推送通道、自动显隐（M4）；IMM32 API 验证（M5）；AppContainer（开始菜单搜索）实测。
+
+**下一步**
+- M4：P4 探针（已运行程序的会话级切换、GetCurrentInputMessageSource）、事件管道推送上屏、InputScope、自动弹出/隐藏、自动切换本 IME、TabTip 共存。

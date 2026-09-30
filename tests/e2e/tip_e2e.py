@@ -16,6 +16,10 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8')
 user32 = ctypes.WinDLL('user32', use_last_error=True)
+try:
+    user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # physical pixels, like panel_e2e.click
+except AttributeError:
+    user32.SetProcessDPIAware()
 CLSID = '{BB2F3BA4-3B7A-414A-A98F-08C100E5447E}'
 WM_GETTEXT, WM_GETTEXTLENGTH, WM_CLOSE, WM_SETTEXT = 0x0D, 0x0E, 0x10, 0x0C
 INPUT_KEYBOARD, KEYEVENTF_KEYUP = 1, 0x2
@@ -77,6 +81,29 @@ def registered() -> bool:
         return False
 
 
+def click(x: int, y: int) -> None:
+    sys.path.insert(0, str(Path(__file__).parent))
+    import panel_e2e
+    panel_e2e.click(x, y)
+
+
+def candidate_window(pid: int):
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        cls = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(hwnd, cls, 64)
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if cls.value == 'T9Ime.TipCandidate' and owner.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(cb, 0)
+    return found[0] if found else None
+
+
 def candidate_window_visible(pid: int) -> bool:
     found = []
 
@@ -121,7 +148,10 @@ def main() -> int:
         edit = user32.FindWindowExW(hwnd, None, 'Edit', None)
         wait_for(lambda: '[tip' in window_text(hwnd), what='profile activation')
         check(window_text(hwnd).endswith('[tip]'), f'profile activated ({window_text(hwnd)})')
-        user32.SetForegroundWindow(hwnd)
+        # Clicking is reliable where SetForegroundWindow hits the foreground lock.
+        er = wintypes.RECT()
+        user32.GetWindowRect(edit, ctypes.byref(er))
+        click((er.left + er.right) // 2, (er.top + er.bottom) // 2)
         wait_for(lambda: user32.GetForegroundWindow() == hwnd, what='foreground')
         time.sleep(0.5)
 
@@ -135,6 +165,21 @@ def main() -> int:
         time.sleep(0.3)
         check(window_text(edit) == '你好', f'nihao + space -> 你好 (got {window_text(edit)!r})')
         check(not candidate_window_visible(target.pid), 'candidate window hides after commit')
+
+        # Mouse click on the candidate window selects without taking focus.
+        clear()
+        type_keys('shi')
+        time.sleep(0.3)
+        cand = candidate_window(target.pid)
+        check(bool(cand), 'candidate window for mouse selection')
+        if cand:
+            r = wintypes.RECT()
+            user32.GetWindowRect(cand, ctypes.byref(r))
+            click(r.left + (r.right - r.left) * 3 // 4, (r.top + r.bottom) // 2)
+            time.sleep(0.4)
+            text = window_text(edit)
+            check(len(text) == 1 and text != 's', f'clicking a candidate commits it (got {text!r})')
+            check(user32.GetForegroundWindow() == hwnd, 'candidate click keeps the target in the foreground')
 
         clear()
         type_keys('zhongguo')

@@ -294,7 +294,7 @@ HRESULT TextService::HandleKey(ITfContext* context, WPARAM vk, LPARAM lp, bool u
 // ---------------------------------------------------------------------------
 // Applying results
 
-void TextService::Apply(ITfContext* context, const ipc::Result& result) {
+void TextService::Apply(ITfContext* context, const ipc::Result& result, bool outside_key_event) {
   if (context) active_context_ = context;
   state_ = result;
   state_.commit.clear();
@@ -306,8 +306,12 @@ void TextService::Apply(ITfContext* context, const ipc::Result& result) {
   if (!active_context_) return;
   ComPtr<TextService> self(this);
   ComPtr<ITfContext> ctx = active_context_;
-  RequestEditSession(ctx.Get(), client_id_, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE,
-                     [self, ctx, result](TfEditCookie ec) { return self->ApplyInSession(ec, ctx.Get(), result); });
+  auto session = [self, ctx, result](TfEditCookie ec) { return self->ApplyInSession(ec, ctx.Get(), result); };
+  if (outside_key_event) {
+    const HRESULT hr = RequestEditSession(ctx.Get(), client_id_, TF_ES_SYNC | TF_ES_READWRITE, session);
+    if (hr != TF_E_SYNCHRONOUS && hr != TF_E_LOCKED) return;  // done (or failed for good)
+  }
+  RequestEditSession(ctx.Get(), client_id_, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, session);
 }
 
 HRESULT TextService::ApplyInSession(TfEditCookie ec, ITfContext* context, const ipc::Result& r) {
@@ -520,13 +524,13 @@ void TextService::HideCandidates() {
 void TextService::SelectCandidate(int index) {
   ipc::Writer req(ipc::MsgType::kSelectCandidate);
   req.U32(ipc::kTagIndex, static_cast<uint32_t>(index));
-  if (auto r = host_.Call(std::move(req), HostClient::kOtherTimeoutMs)) Apply(active_context_.Get(), *r);
+  if (auto r = host_.Call(std::move(req), HostClient::kOtherTimeoutMs)) Apply(active_context_.Get(), *r, true);
 }
 
 void TextService::ChangePage(bool backward) {
   ipc::Writer req(ipc::MsgType::kChangePage);
   req.Bool(ipc::kTagBackward, backward);
-  if (auto r = host_.Call(std::move(req), HostClient::kOtherTimeoutMs)) Apply(active_context_.Get(), *r);
+  if (auto r = host_.Call(std::move(req), HostClient::kOtherTimeoutMs)) Apply(active_context_.Get(), *r, true);
 }
 
 STDMETHODIMP TextService::OnLayoutChange(ITfContext* context, TfLayoutCode code, ITfContextView*) {
