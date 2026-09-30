@@ -54,3 +54,9 @@ add_test(NAME e2e_autoshow
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/autoshow_e2e.py"
           --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>" --work "${CMAKE_BINARY_DIR}/e2e")
 set_tests_properties(e2e_autoshow PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+
+# Tapping the panel switches an application from another input method to T9Ime.
+add_test(NAME e2e_switch
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/e2e/switch_e2e.py"
+          --host "$<TARGET_FILE:T9Host>" --target "$<TARGET_FILE:test_target>" --work "${CMAKE_BINARY_DIR}/e2e")
+set_tests_properties(e2e_switch PROPERTIES LABELS e2e RUN_SERIAL TRUE SKIP_RETURN_CODE 77)

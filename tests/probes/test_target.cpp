@@ -1,7 +1,9 @@
 // Test target for end-to-end tests: a top-level window with a multi-line Edit
 // control that keeps the keyboard focus. Tests read the text with WM_GETTEXT.
 // Below it: an Edit with InputScope IS_NUMBER and a password Edit.
-//   --activate-tip   switch this process to the T9Ime TSF profile
+//   --activate-tip       switch this process to the T9Ime TSF profile
+//   --activate-english   switch this process to the US English keyboard
+// Either way the previous input method is restored on close.
 #include <windows.h>
 #include <msctf.h>
 #include <shellapi.h>
@@ -91,16 +93,19 @@ void RestorePrevious() {
   g_have_previous = false;
 }
 
-bool ActivateT9Tip() {
+bool ActivateProfile(bool t9ime) {
   ITfInputProcessorProfileMgr* mgr = nullptr;
   if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
                               IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
     return false;
   }
   g_have_previous = SUCCEEDED(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &g_previous));
-  const HRESULT hr = mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED),
-                                          kClsidT9Tip, kGuidT9Profile, nullptr,
-                                          TF_IPPMF_FORPROCESS | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE);
+  const HRESULT hr =
+      t9ime ? mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED),
+                                   kClsidT9Tip, kGuidT9Profile, nullptr,
+                                   TF_IPPMF_FORPROCESS | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE)
+            : mgr->ActivateProfile(TF_PROFILETYPE_KEYBOARDLAYOUT, 0x0409, GUID_NULL, GUID_NULL,
+                                   reinterpret_cast<HKL>(static_cast<uintptr_t>(0x04090409)), TF_IPPMF_FORPROCESS);
   mgr->Release();
   return SUCCEEDED(hr);
 }
@@ -108,8 +113,11 @@ bool ActivateT9Tip() {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   int argc = 0;
   LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-  bool activate = false;
-  for (int i = 1; i < argc; ++i) activate |= lstrcmpW(argv[i], L"--activate-tip") == 0;
+  bool activate = false, english = false;
+  for (int i = 1; i < argc; ++i) {
+    activate |= lstrcmpW(argv[i], L"--activate-tip") == 0;
+    english |= lstrcmpW(argv[i], L"--activate-english") == 0;
+  }
   LocalFree(argv);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   WNDCLASSW wc = {};
@@ -123,7 +131,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                               nullptr, nullptr, instance, nullptr);
   ShowWindow(hwnd, show);
   SetForegroundWindow(hwnd);
-  if (activate) SetWindowTextW(hwnd, ActivateT9Tip() ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
+  if (activate) SetWindowTextW(hwnd, ActivateProfile(true) ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
+  if (english) SetWindowTextW(hwnd, ActivateProfile(false) ? L"T9Ime TestTarget [en]" : L"T9Ime TestTarget [en failed]");
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
     TranslateMessage(&msg);

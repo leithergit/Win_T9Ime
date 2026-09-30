@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "system_input.h"
 #include "text_output.h"
 #include "win_compat.h"
 
@@ -138,6 +139,7 @@ void PanelWindow::OnFocusEvents() {
     switch (d.action) {
       case AutoAction::kShow:
         KillTimer(hwnd_, kAutoHideTimer);
+        if (!visible() && touch_keyboard::IsVisible()) break;  // the user opened the Windows keyboard
         SetMode(d.mode);
         if (!visible()) {
           Show();
@@ -352,6 +354,7 @@ void PanelWindow::PointerDown(UINT32 id, POINT screen) {
   GetWindowRect(hwnd_, &t.window0);
   t.resizing = t.action == Action::kHandle && x >= layout_.handle.Right() - Metrics::kResizeGrip;
   tracks_[id] = t;
+  if (on_interaction_ && t.action != Action::kHandle) on_interaction_();
   if (t.action == Action::kBackspace || t.action == Action::kKey || t.action == Action::kSpace) {
     long_press_id_ = id;
     SetTimer(hwnd_, kLongPressTimer, kLongPressMs, nullptr);

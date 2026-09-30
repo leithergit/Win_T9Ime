@@ -1,0 +1,130 @@
+#include "system_input.h"
+
+#include <msctf.h>
+
+#include "win_compat.h"
+
+namespace t9ime {
+
+namespace {
+
+// Same identifiers as src/tip/globals.cpp.
+const CLSID kClsidT9Tip = {0xbb2f3ba4, 0x3b7a, 0x414a, {0xa9, 0x8f, 0x08, 0xc1, 0x00, 0xe5, 0x44, 0x7e}};
+const GUID kGuidT9Profile = {0x3ea4ff8c, 0xcaf7, 0x456f, {0x95, 0x42, 0x1c, 0x0f, 0x1e, 0xf2, 0x63, 0x5e}};
+constexpr LANGID kLangId = MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED);
+constexpr ULONGLONG kRetryMs = 3000;
+
+// IFrameworkInputPane (shobjidl_core.h, Windows 8 SDK) declared locally: the
+// SDK hides it below _WIN32_WINNT 0x0602.
+const CLSID kClsidFrameworkInputPane = {0xD5120AA3, 0x46BA, 0x44C5, {0x82, 0x2D, 0xCA, 0x80, 0x92, 0xC1, 0xFC, 0x72}};
+const IID kIidFrameworkInputPane = {0x5752238B, 0x24F0, 0x495A, {0x82, 0xF1, 0x2F, 0xD5, 0x93, 0x05, 0x67, 0x96}};
+struct IFrameworkInputPane : IUnknown {
+  virtual HRESULT STDMETHODCALLTYPE Advise(IUnknown*, IUnknown*, DWORD*) = 0;
+  virtual HRESULT STDMETHODCALLTYPE AdviseWithHWND(HWND, IUnknown*, DWORD*) = 0;
+  virtual HRESULT STDMETHODCALLTYPE Unadvise(DWORD) = 0;
+  virtual HRESULT STDMETHODCALLTYPE Location(RECT*) = 0;
+};
+
+constexpr wchar_t kTabTipKey[] = L"Software\\Microsoft\\TabletTip\\1.7";
+constexpr wchar_t kBackupKey[] = L"Software\\T9Ime\\TouchKeyboardBackup";
+// Windows 11: "Show the touch keyboard" (0 never, 1 when no keyboard, 2 always).
+// Windows 10: show automatically in desktop mode without a keyboard.
+constexpr const wchar_t* kTabTipValues[] = {L"TouchKeyboardTapInvoke", L"EnableDesktopModeAutoInvoke"};
+constexpr DWORD kMissing = 0xFFFFFFFF;  // backup marker: the value did not exist
+
+}  // namespace
+
+bool ImeSwitcher::Begin(HWND foreground) {
+  const ULONGLONG now = GetTickCount64();
+  if (foreground == last_window_ && now - last_tick_ < kRetryMs) return false;
+  last_window_ = foreground;
+  last_tick_ = now;
+  ITfInputProcessorProfileMgr* mgr = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_ITfInputProcessorProfileMgr, reinterpret_cast<void**>(&mgr)))) {
+    return true;
+  }
+  // FORSESSION: all threads of this desktop (the default "per user" input
+  // method mode then carries it to the foreground application).
+  mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR, kLangId, kClsidT9Tip, kGuidT9Profile, nullptr,
+                       TF_IPPMF_FORSESSION | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE);
+  mgr->Release();
+  return true;
+}
+
+void ImeSwitcher::Fallback(HWND foreground) {
+  // Ask the focus window to change its input language to Chinese (Simplified);
+  // with the profile marked above, that language comes up with T9Ime.
+  GUITHREADINFO gti = {sizeof(gti)};
+  const DWORD tid = GetWindowThreadProcessId(foreground, nullptr);
+  HWND target = GetGUIThreadInfo(tid, &gti) && gti.hwndFocus ? gti.hwndFocus : foreground;
+  PostMessageW(target, WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(reinterpret_cast<HKL>(0x08040804)));
+}
+
+namespace touch_keyboard {
+
+bool IsVisible() {
+  if (!compat::Os().AtLeastWin10()) return false;
+  IFrameworkInputPane* pane = nullptr;
+  if (FAILED(CoCreateInstance(kClsidFrameworkInputPane, nullptr, CLSCTX_INPROC_SERVER, kIidFrameworkInputPane,
+                              reinterpret_cast<void**>(&pane)))) {
+    return false;
+  }
+  RECT r = {};
+  const bool visible = SUCCEEDED(pane->Location(&r)) && r.right > r.left && r.bottom > r.top;
+  pane->Release();
+  return visible;
+}
+
+bool IsTakenOver() {
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kBackupKey, 0, KEY_READ, &key) != ERROR_SUCCESS) return false;
+  RegCloseKey(key);
+  return true;
+}
+
+void TakeOver() {
+  if (IsTakenOver()) return;
+  HKEY tabtip = nullptr, backup = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kTabTipKey, 0, nullptr, 0, KEY_READ | KEY_WRITE, nullptr, &tabtip, nullptr) !=
+      ERROR_SUCCESS) {
+    return;
+  }
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kBackupKey, 0, nullptr, 0, KEY_WRITE, nullptr, &backup, nullptr) ==
+      ERROR_SUCCESS) {
+    for (const wchar_t* name : kTabTipValues) {
+      DWORD value = kMissing, size = sizeof(value);
+      if (RegGetValueW(tabtip, nullptr, name, RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS) {
+        value = kMissing;
+      }
+      RegSetValueExW(backup, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+      const DWORD off = 0;
+      RegSetValueExW(tabtip, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&off), sizeof(off));
+    }
+    RegCloseKey(backup);
+  }
+  RegCloseKey(tabtip);
+}
+
+void Restore() {
+  HKEY backup = nullptr, tabtip = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kBackupKey, 0, KEY_READ, &backup) != ERROR_SUCCESS) return;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kTabTipKey, 0, KEY_WRITE, &tabtip) == ERROR_SUCCESS) {
+    for (const wchar_t* name : kTabTipValues) {
+      DWORD value = kMissing, size = sizeof(value);
+      if (RegGetValueW(backup, nullptr, name, RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS) continue;
+      if (value == kMissing) {
+        RegDeleteValueW(tabtip, name);
+      } else {
+        RegSetValueExW(tabtip, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+      }
+    }
+    RegCloseKey(tabtip);
+  }
+  RegCloseKey(backup);
+  RegDeleteKeyW(HKEY_CURRENT_USER, kBackupKey);
+}
+
+}  // namespace touch_keyboard
+
+}  // namespace t9ime

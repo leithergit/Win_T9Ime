@@ -16,6 +16,7 @@
 #include "engine_thread.h"
 #include "panel_window.h"
 #include "request_server.h"
+#include "system_input.h"
 #include "text_output.h"
 #include "win_compat.h"
 
@@ -31,6 +32,9 @@ constexpr UINT kCmdExit = 101;
 constexpr UINT kCmdDock = 102;
 constexpr UINT kCmdAutoShow = 103;
 constexpr UINT kCmdAlwaysShow = 104;
+constexpr UINT kCmdTouchKeyboard = 105;
+constexpr UINT_PTR kSwitchTimer = 1;
+constexpr UINT kSwitchFallbackMs = 300;
 
 struct Args {
   std::wstring data, user, settings, dump_layout, pipe_name;
@@ -146,6 +150,13 @@ class HostApp {
     if (!events_->Start()) events_.reset();
     // Panel output goes to the focused TIP when there is one.
     panel_->SetDeliver([this](const std::wstring& text) { return focus_.PushCommit(text); });
+    // Touching the panel while the foreground application has no T9Ime
+    // connection: switch it to T9Ime (SPEC U6).
+    panel_->SetOnInteraction([this] {
+      if (focus_.Foreground(nullptr)) return;
+      switch_window_ = GetForegroundWindow();
+      if (switch_window_ && switcher_.Begin(switch_window_)) SetTimer(hwnd_, kSwitchTimer, kSwitchFallbackMs, nullptr);
+    });
     // Focus changes drive the automatic show / hide (called on pipe threads).
     focus_.SetListener([this](const ipc::FocusInfo& info) {
       panel::FocusEvent e;
@@ -190,12 +201,22 @@ class HostApp {
       if (msg == WM_COMMAND) {
         if (LOWORD(wp) == kCmdToggle) self->panel_->Toggle();
         if (LOWORD(wp) == kCmdDock) self->panel_->Dock();
+        if (LOWORD(wp) == kCmdTouchKeyboard) {
+          touch_keyboard::IsTakenOver() ? touch_keyboard::Restore() : touch_keyboard::TakeOver();
+        }
         if (LOWORD(wp) == kCmdAutoShow || LOWORD(wp) == kCmdAlwaysShow) {
           auto& s = self->panel_->settings();
           (LOWORD(wp) == kCmdAutoShow ? s.auto_show : s.always_show) ^= true;
           self->panel_->SaveSettings();
         }
         if (LOWORD(wp) == kCmdExit) PostQuitMessage(0);
+        return 0;
+      }
+      if (msg == WM_TIMER && wp == kSwitchTimer) {
+        KillTimer(hwnd, kSwitchTimer);
+        if (!self->focus_.Foreground(nullptr) && GetForegroundWindow() == self->switch_window_) {
+          self->switcher_.Fallback(self->switch_window_);
+        }
         return 0;
       }
       if (msg == ActivateMessage()) {
@@ -234,6 +255,10 @@ class HostApp {
     AppendMenuW(menu, MF_STRING | (s.auto_show ? MF_CHECKED : 0), kCmdAutoShow, L"触摸输入框时自动弹出键盘");
     AppendMenuW(menu, MF_STRING | (s.always_show ? MF_CHECKED : 0) | (s.auto_show ? 0 : MF_GRAYED), kCmdAlwaysShow,
                 L"任何方式聚焦输入框都弹出（无触摸屏时）");
+    if (compat::Os().AtLeastWin10()) {
+      AppendMenuW(menu, MF_STRING | (touch_keyboard::IsTakenOver() ? MF_CHECKED : 0), kCmdTouchKeyboard,
+                  L"关闭系统触摸键盘的自动弹出");
+    }
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCmdExit, L"退出");
     POINT pt;
@@ -247,6 +272,8 @@ class HostApp {
   HWND hwnd_ = nullptr;
   EngineThread engine_;
   ipc::FocusRegistry focus_;
+  ImeSwitcher switcher_;
+  HWND switch_window_ = nullptr;
   std::unique_ptr<ipc::RequestServer> server_;
   std::unique_ptr<ipc::EventServer> events_;
   std::unique_ptr<panel::PanelWindow> panel_;

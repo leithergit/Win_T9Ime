@@ -50,6 +50,9 @@ class PanelWindow {
   // Text output: returns false when it could not be delivered (then the panel
   // falls back to SendInput).
   void SetDeliver(std::function<bool(const std::wstring&)> deliver) { deliver_ = std::move(deliver); }
+  // Called when the user starts touching a key (e.g. to switch the target
+  // application to T9Ime before text arrives).
+  void SetOnInteraction(std::function<void()> f) { on_interaction_ = std::move(f); }
   // Back to the default place: bottom center of the current monitor.
   void Dock();
 
@@ -109,6 +112,7 @@ class PanelWindow {
   EngineThread& engine_;
   PanelOptions options_;
   std::function<bool(const std::wstring&)> deliver_;
+  std::function<void()> on_interaction_;
   unsigned pushed_ = 0, sent_ = 0;  // delivery statistics (test hook)
 
   AutoShowSettings settings_;
