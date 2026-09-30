@@ -68,6 +68,7 @@ add_custom_target(copy_rime_dll ALL
   VERBATIM)
 
 add_subdirectory(src/common)
+add_subdirectory(src/tip)
 add_subdirectory(src/host/engine)
 add_subdirectory(src/host)
 add_subdirectory(tools/t9repl)
