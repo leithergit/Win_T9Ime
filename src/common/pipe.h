@@ -50,9 +50,9 @@ class PipeClient {
   // After a failed Call: true if it timed out (server alive but slow), false
   // if the pipe broke (server gone).
   bool last_failure_timed_out() const { return timed_out_; }
+  static constexpr int kMaxTimeouts = 8;
 
  private:
-  static constexpr int kMaxTimeouts = 3;
   HANDLE pipe_ = INVALID_HANDLE_VALUE;
   bool timed_out_ = false;
   int timeouts_ = 0;

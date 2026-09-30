@@ -114,10 +114,18 @@ void HostClient::MaybeStartHost() {
 
 bool HostClient::Exchange(ipc::Writer& request, std::vector<uint8_t>* response, DWORD timeout_ms) {
   if (!EnsureConnected()) return false;
+  // Focus reports are answered without the engine: always sent, so the host
+  // keeps knowing the focus while it is busy. Engine requests (keys, state)
+  // fail fast for a moment after a timeout: keys pass through, and timeouts do
+  // not pile up into a dropped connection (which the host sees as focus out).
+  const ipc::MsgType type = request.type();
+  const bool registry_only = type == ipc::MsgType::kFocusIn || type == ipc::MsgType::kFocusOut;
+  if (!registry_only && GetTickCount64() < slow_until_) return false;
   if (pipe_.Call(request.Finish(), response, timeout_ms)) return true;
   if (pipe_.connected()) {
-    // Host alive but slow (busy, warming up): the connection is kept (the
-    // late answer is skipped by the next call); keys pass through meanwhile.
+    // Host alive but slow: the connection is kept (the late answer is
+    // skipped by the next call).
+    slow_until_ = GetTickCount64() + 1000;
   } else if (pipe_.last_failure_timed_out()) {
     // Several timeouts in a row: stay away for a moment so a stuck host does
     // not delay every key by the full timeout. Do not start another one.

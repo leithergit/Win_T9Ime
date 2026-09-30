@@ -107,6 +107,7 @@ constexpr uint32_t kFocusActivated = 8;  // reported while T9Ime is being activa
 class Writer {
  public:
   explicit Writer(MsgType type, uint32_t seq = 0);
+  MsgType type() const { return static_cast<MsgType>(buf_[6] | buf_[7] << 8); }
   Writer& U32(uint16_t tag, uint32_t value);
   Writer& I32(uint16_t tag, int32_t value) { return U32(tag, static_cast<uint32_t>(value)); }
   Writer& Bool(uint16_t tag, bool value) { return U32(tag, value ? 1 : 0); }

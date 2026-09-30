@@ -2,9 +2,11 @@
 
 #include <msctf.h>
 
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "ime_profile.h"
 #include "win_compat.h"
@@ -20,6 +22,17 @@ HWND FocusOf(HWND window) {
   return GetGUIThreadInfo(tid, &gti) && gti.hwndFocus ? gti.hwndFocus : window;
 }
 constexpr ULONGLONG kRetryMs = 3000;
+
+// Session-wide profile activation notifies every GUI thread of the desktop and
+// can take seconds when one of them is slow (seen on Windows 7): never on the
+// UI thread. Work items run in order on their own STA thread.
+void InBackground(std::function<void()> work) {
+  std::thread([work = std::move(work)] {
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    work();
+    if (SUCCEEDED(hr)) CoUninitialize();
+  }).detach();
+}
 
 // IFrameworkInputPane (shobjidl_core.h, Windows 8 SDK) declared locally: the
 // SDK hides it below _WIN32_WINNT 0x0602.
@@ -52,7 +65,7 @@ bool ImeSwitcher::Begin(HWND foreground) {
   last_tick_ = now;
   // FORSESSION: all threads of this desktop (the default "per user" input
   // method mode then carries it to the foreground application).
-  ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION);
+  InBackground([] { ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION); });
   return true;
 }
 
@@ -63,17 +76,22 @@ void ImeSwitcher::Fallback(HWND foreground) {
 }
 
 void ImeSwitcher::Activate(HWND window) {
-  ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION);
-  PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(T9LanguageHkl()));
+  InBackground([window] {
+    ActivateProfile(T9Profile(), TF_IPPMF_FORSESSION);
+    PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(T9LanguageHkl()));
+  });
 }
 
 bool ImeSwitcher::Deactivate(HWND window) {
   TF_INPUTPROCESSORPROFILE other;
   if (!FindOtherProfile(&other)) return false;
-  ActivateProfile(other, TF_IPPMF_FORSESSION);
-  // Windows 7 (input method per thread): ask the window's thread directly.
-  HKL hkl = other.hkl ? other.hkl : reinterpret_cast<HKL>(static_cast<ULONG_PTR>(MAKELONG(other.langid, other.langid)));
-  PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(hkl));
+  InBackground([window, other] {
+    ActivateProfile(other, TF_IPPMF_FORSESSION);
+    // Windows 7 (input method per thread): ask the window's thread directly.
+    HKL hkl =
+        other.hkl ? other.hkl : reinterpret_cast<HKL>(static_cast<ULONG_PTR>(MAKELONG(other.langid, other.langid)));
+    PostMessageW(FocusOf(window), WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(hkl));
+  });
   return true;
 }
 

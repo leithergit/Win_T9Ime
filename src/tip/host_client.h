@@ -40,6 +40,7 @@ class HostClient {
 
   ipc::PipeClient pipe_;
   ULONGLONG next_attempt_ = 0;   // no connection attempts before this tick
+  ULONGLONG slow_until_ = 0;     // host slow (warm-up, long lookup): engine requests fail fast until then
   ULONGLONG next_launch_ = 0;    // no host launch before this tick
   DWORD backoff_ms_ = 500;
   uint32_t client_id_ = 0;

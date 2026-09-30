@@ -182,7 +182,16 @@ class Panel:
         before = self.read()['seq']
         click(e['x'], e['y'])
         # Wait for the panel to repaint after the engine answered.
-        wait_for(lambda: (self.read() or {}).get('seq', before) > before, what='repaint')
+        try:
+            wait_for(lambda: (self.read() or {}).get('seq', before) > before, what='repaint')
+        except AssertionError:
+            user32.WindowFromPoint.restype = wintypes.HWND
+            user32.WindowFromPoint.argtypes = [wintypes.POINT]
+            under = user32.WindowFromPoint(wintypes.POINT(e['x'], e['y']))
+            cls = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(under, cls, 256)
+            raise AssertionError(f'no repaint after clicking {e["label"]!r} at ({e["x"]},{e["y"]}); window there: '
+                                 f'{cls.value!r}, panel window {self.read().get("window")}')
         time.sleep(0.15)
 
     def keys(self, digits: str):

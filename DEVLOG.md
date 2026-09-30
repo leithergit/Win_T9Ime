@@ -209,3 +209,9 @@
 - **CUAS 先聚焦后压入上下文**（Win7）：新文本框第一次获得焦点时 `OnSetFocus` 里取不到上下文，TIP 报告为焦点离开，之后不再补报——触屏上第一次点某个输入框可能弹出错误布局或隐藏面板。现在 `OnPushContext` 对当前焦点文档重新上报。
 - **断线后不自动重连**：Host 预热期间 TIP 连续超时断开，Host 把断开当作焦点离开；TIP 要等下一次按键或焦点变化才重连，其间面板上屏退回 SendInput。现在 TIP 断线后用定时器（2.5 s，最多 12 次）重连并补报焦点；Host 的 FocusOut 不再排在引擎后面（立即应答，会话在该连接下一次引擎请求时清空）。
 - 测试：autoshow 在无 InjectTouchInput（Win7）时跳过整个触摸场景；panel e2e 查找元素时等待重排（最多 3 s），回车上屏等待到达。
+
+## 2026-09-30 — M5 Win7 虚拟机稳定：7 项 e2e 连续两轮全过
+
+- **面板首击卡住**（panel e2e 在冷启动后第一下点击 10 s 无重绘）：点面板时若前台程序没接 T9Ime，会做会话级切换（`ActivateProfile(FORSESSION)`），它要通知桌面上所有 GUI 线程，在 Win7 上可能阻塞数秒——原来在 UI 线程执行。现在 ImeSwitcher 的会话级切换（含控制 API 的 activate / deactivate）都在单独的 STA 线程执行。
+- **Host 忙时的 TIP 行为**：一次超时后 1 s 内，引擎类请求（按键、状态）直接失败（按键透传），不再堆积超时；焦点上报（FocusIn / FocusOut，Host 不经引擎直接应答）照常发送，Host 始终知道焦点。连接只在连续 8 次超时后才断开（原来 3 次，断开会被 Host 当作焦点离开）。
+- 虚拟机（主机内存仅剩约 1 GB）：panel、tip、push、autoshow、switch、ctl、imm 连续两轮全部通过。

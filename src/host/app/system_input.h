@@ -13,7 +13,7 @@ namespace t9ime {
 // its focus window. Rate limited per window. UI thread (COM initialized).
 class ImeSwitcher {
  public:
-  // Step 1. Returns false when it was attempted for this window very recently.
+  // Step 1 (asynchronous). Returns false when it was attempted for this window very recently.
   bool Begin(HWND foreground);
   // Step 2 (call ~300 ms later if the TIP did not connect).
   void Fallback(HWND foreground);

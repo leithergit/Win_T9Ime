@@ -196,9 +196,11 @@ TEST_CASE("pipe client times out instead of blocking") {
   CHECK(spent < 1000);
   CHECK(c.last_failure_timed_out());
   CHECK(c.connected());  // a slow server keeps the connection
-  CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 50));
-  CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 50));
-  CHECK_FALSE(c.connected());  // closed after three timeouts in a row
+  for (int i = 1; i < PipeClient::kMaxTimeouts; ++i) {
+    CHECK(c.connected());
+    CHECK_FALSE(c.Call(Writer(MsgType::kQueryState).Finish(), &resp, 20));
+  }
+  CHECK_FALSE(c.connected());  // closed after kMaxTimeouts timeouts in a row
   CloseHandle(server);
   CHECK_FALSE(c.Connect(L"\\\\.\\pipe\\T9Ime.test.nobody", 100));
 }
