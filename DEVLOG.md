@@ -244,3 +244,9 @@
 - 原因（推断）：T9Ctl 在调用程序的 UI 线程里 `CoInitializeEx` → `ActivateProfile(FORPROCESS)` → `CoUninitialize`；Win7 上随后 T9Ime 在该线程里收不到停用通知（隐藏依赖该通知）。
 - 修复：T9Ctl 不再在调用线程做任何 TSF / COM 操作。`T9_ShowKeyboard` / `T9_ToggleKeyboard` 把调用者的前台窗口交给 Host，由 Host 在前台线程没有 T9Ime 时执行与面板点击相同的切换（会话级 profile + 向窗口投递 `WM_INPUTLANGCHANGEREQUEST`）；`T9_Activate` / `T9_Deactivate` 一律经 Host，Host 不在时直接投递 `WM_INPUTLANGCHANGEREQUEST`。
 - ctl e2e 的 D2 改为模拟用户切换：向 TestHost 输入框投递 `WM_INPUTLANGCHANGEREQUEST`（其他语言的键盘布局），键盘隐藏。Win11 通过，Win7 待触屏虚拟机复测。
+
+## 2026-09-30 — D2/D5：回到调用线程内切换，但不再 CoUninitialize
+
+- 复测（00dcbce）：D2、D5 都不符合。经 Host 切换（会话级 profile + WM_INPUTLANGCHANGEREQUEST）在 Win7 上只能换语言：TestHost 用的是另一个中文输入法（同为 0804）时什么都不会发生，T9Ime 没激活，D5 失败，D2 也就没有停用可报；400 ms 语言轮询也看不到变化（语言没变）。
+- 修复：调用者自己的窗口（按钮处理函数里）重新在调用线程 `ActivateProfile(FORPROCESS)`——Win7 上同语言输入法之间切换只有这条路；COM 若由我们初始化就保持初始化，不再 `CoUninitialize`（推断此前 D2 失败的原因：反初始化把刚激活的 T9Ime 又关掉了，状态图标仍是 T9，但已没有实例上报停用）。其他窗口仍经 Host。
+- 诊断：`start_m5_test.bat` 录制 `results\m5_watch.txt`（t9diag --watch 600），焦点事件带 `deactivated` 标记，D2/D5 再失败时据此定位。

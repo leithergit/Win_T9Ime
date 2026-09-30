@@ -147,7 +147,7 @@ void PanelWindow::OnFocusEvents() {
   }
   for (const FocusEvent& e : events) {
     last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + (e.switched ? " switched" : "") +
-                  " scopes=";
+                  (e.deactivated ? " deactivated" : "") + " scopes=";
     for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
     // Switching to T9Ime starts over with the default (Chinese nine-key)
     // layout - unless the panel is already up (an application showed it with

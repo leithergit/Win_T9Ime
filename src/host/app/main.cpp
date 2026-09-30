@@ -351,12 +351,7 @@ class HostApp {
         } else {
           panel_->Toggle();
         }
-        if (panel_->visible()) {
-          panel_->BindToForeground();  // hides when the user switches to another application
-          // Shown by the application itself (its window given): its input
-          // should go through T9Ime too (D5).
-          if (target && IsWindow(target) && !focus_.Foreground(nullptr)) ImeSwitcher::Activate(target);
-        }
+        if (panel_->visible()) panel_->BindToForeground();  // hides when the user switches to another application
         break;
       case MsgType::kCtlHide:
         panel_->Hide();

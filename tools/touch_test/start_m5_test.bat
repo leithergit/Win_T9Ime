@@ -49,7 +49,8 @@ if exist "%APPDATA%\T9Ime\panel.ini" del "%APPDATA%\T9Ime\panel.ini"
 start "" "!DST!\!ARCH!\T9Host.exe" --take-over-touch-keyboard
 "!DST!\!ARCH!\t9diag.exe" > "%RES%\diag_before.txt" 2>&1
 
-echo [5/5] Opening the sample programs (C++ and C#)...
+echo [5/5] Recording for 10 minutes (results\m5_watch.txt) and opening the sample programs...
+start "T9Ime watch - do not close" /min cmd /c ""!DST!\!ARCH!\t9diag.exe" --watch 600 > "%RES%\m5_watch.txt" 2>&1"
 start "" "!DST!\!ARCH!\TestHost.exe"
 start "" "!DST!\!ARCH!\TestHost.CS.exe"
 echo.
