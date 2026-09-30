@@ -20,6 +20,7 @@ import panel_e2e as pe  # noqa: E402  (per-monitor DPI aware)
 import tip_e2e as te  # noqa: E402
 
 user32 = pe.user32
+WM_APP = 0x8000
 
 # --- touch injection (Windows 8+) ---
 PT_TOUCH = 2
@@ -83,7 +84,7 @@ def main() -> int:
         if not cond:
             failures.append(msg)
 
-    def run(always: bool, scenario):
+    def run(always: bool, scenario, target_arg='--activate-tip'):
         layout = args.work / 'auto_layout.json'
         layout.unlink(missing_ok=True)
         ini = args.work / 'auto_panel.ini'
@@ -95,12 +96,13 @@ def main() -> int:
         if always:
             cmd.append('--always-show')
         host = pe.start_host(args.host, *cmd)
-        target = subprocess.Popen([str(Path(args.target).resolve()), '--activate-tip'])
+        target = subprocess.Popen([str(Path(args.target).resolve()), target_arg])
         try:
             panel = pe.Panel(layout)
             pe.wait_for(panel.read, what='layout dump')
             hwnd = pe.wait_for(lambda: user32.FindWindowW('T9Ime.TestTarget', None), what='test target')
-            pe.wait_for(lambda: '[tip' in pe.window_text(hwnd), what='profile activation')
+            tag = '[tip' if target_arg == '--activate-tip' else '[en'
+            pe.wait_for(lambda: tag in pe.window_text(hwnd), what='profile activation')
             edits = []
             child = None
             while True:
@@ -179,10 +181,26 @@ def main() -> int:
         pe.wait_for(lambda: not visible(panel), timeout=5, what='panel hidden')
         shown_by(edits[1], 'touch focus on another field pops the panel up')
 
+    def switch_scenario(panel, hwnd, edits):
+        pe.click(*center(edits[1]))  # IS_NUMBER field
+        time.sleep(2.0)  # the target has been in front for a while
+        check(not visible(panel), 'hidden while the target uses another input method')
+        user32.PostMessageW(hwnd, WM_APP + 1, 0, 0)  # the user switches to T9Ime
+        pe.wait_for(lambda: '[tip' in pe.window_text(hwnd), what='switch to T9Ime')
+        ok = False
+        try:
+            pe.wait_for(lambda: visible(panel), timeout=5, what='panel shown')
+            ok = True
+        except AssertionError:
+            pass
+        check(ok and has(panel, pe.TEXT, '7'),
+              f'switching to T9Ime pops the panel up with the field layout (focus {(panel.read() or {}).get("focus")!r})')
+
     caps = user32.GetKeyState(0x14) & 1
     try:
         run(True, always_scenario)
         run(False, touch_scenario)
+        run(False, switch_scenario, '--activate-english')
     finally:
         subprocess.run(['taskkill', '/im', 'T9Host.exe', '/f'], capture_output=True)
         if caps and not user32.GetKeyState(0x14) & 1:

@@ -23,6 +23,19 @@ class ImeSwitcher {
   ULONGLONG last_tick_ = 0;
 };
 
+// Tells a user's switch to T9Ime apart from T9Ime starting in an application
+// that just came to the front (TSF activates the input method in a thread when
+// it first gets the focus). Records foreground changes with an out-of-context
+// WinEvent hook. Start() on a thread with a message loop.
+namespace foreground {
+void Start();
+void Stop();
+// True if `tid` owns the foreground window and that window did not just come
+// to the front (or came back to it after a short detour, e.g. a switcher
+// flyout).
+bool SettledIn(DWORD tid);
+}  // namespace foreground
+
 namespace touch_keyboard {
 
 // True if the Windows touch keyboard is on screen (Windows 8+; false on 7).

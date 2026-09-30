@@ -3,6 +3,7 @@
 #include <msctf.h>
 
 #include <iterator>
+#include <mutex>
 #include <string>
 
 #include "win_compat.h"
@@ -67,6 +68,51 @@ void ImeSwitcher::Fallback(HWND foreground) {
   HWND target = GetGUIThreadInfo(tid, &gti) && gti.hwndFocus ? gti.hwndFocus : foreground;
   PostMessageW(target, WM_INPUTLANGCHANGEREQUEST, 0, reinterpret_cast<LPARAM>(reinterpret_cast<HKL>(0x08040804)));
 }
+
+namespace foreground {
+
+namespace {
+constexpr ULONGLONG kSettleMs = 1500;
+std::mutex g_mutex;
+HWND g_current = nullptr, g_previous = nullptr, g_before = nullptr;
+ULONGLONG g_changed = 0;
+HWINEVENTHOOK g_hook = nullptr;
+
+void CALLBACK OnForeground(HWINEVENTHOOK, DWORD, HWND hwnd, LONG object, LONG, DWORD, DWORD) {
+  if (object != OBJID_WINDOW || !hwnd) return;
+  std::lock_guard lock(g_mutex);
+  if (hwnd == g_current) return;
+  g_before = g_previous;
+  g_previous = g_current;
+  g_current = hwnd;
+  g_changed = GetTickCount64();
+}
+}  // namespace
+
+void Start() {
+  if (g_hook) return;
+  {
+    std::lock_guard lock(g_mutex);
+    g_current = GetForegroundWindow();
+  }
+  g_hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, OnForeground, 0, 0,
+                           WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+}
+
+void Stop() {
+  if (g_hook) UnhookWinEvent(g_hook);
+  g_hook = nullptr;
+}
+
+bool SettledIn(DWORD tid) {
+  HWND fg = GetForegroundWindow();
+  if (!fg || GetWindowThreadProcessId(fg, nullptr) != tid) return false;
+  std::lock_guard lock(g_mutex);
+  if (fg != g_current) return false;  // the hook has not seen this change yet
+  return GetTickCount64() - g_changed >= kSettleMs || g_current == g_before;
+}
+
+}  // namespace foreground
 
 namespace touch_keyboard {
 

@@ -129,6 +129,7 @@ class TextService final : public ITfTextInputProcessorEx,
   Microsoft::WRL::ComPtr<ITfThreadMgr> thread_mgr_;
   TfClientId client_id_ = TF_CLIENTID_NULL;
   DWORD activate_flags_ = 0;
+  bool activating_ = false;  // inside ActivateEx: focus reports carry kFocusActivated
   DWORD thread_mgr_cookie_ = TF_INVALID_COOKIE;
   DWORD thread_focus_cookie_ = TF_INVALID_COOKIE;
   DWORD profile_cookie_ = TF_INVALID_COOKIE;

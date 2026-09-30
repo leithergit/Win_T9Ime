@@ -182,7 +182,9 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     ComPtr<ITfDocumentMgr> focus;
     if (SUCCEEDED(thread_mgr_->GetFocus(&focus)) && focus) {
       AdviseLayoutSink(focus.Get());
+      activating_ = true;  // the host may show the panel when the user switched to T9Ime
       ReportFocus(focus.Get());
+      activating_ = false;
     }
 
     DWORD open = 0;
@@ -607,7 +609,8 @@ void TextService::SendFocusIn(HWND hwnd, const std::vector<uint32_t>& scopes, bo
   for (uint32_t s : scopes) req.U32(ipc::kTagInputScope, s);
   req.Bool(ipc::kTagTouch, touch).Bool(ipc::kTagReadOnly, read_only);
   if (!touch_debug.empty()) req.Str(ipc::kTagText, touch_debug);
-  if (no_context) req.U32(ipc::kTagFlags, ipc::kFocusNoContext);
+  const uint32_t flags = (no_context ? ipc::kFocusNoContext : 0) | (activating_ ? ipc::kFocusActivated : 0);
+  if (flags) req.U32(ipc::kTagFlags, flags);
   host_.Notify(std::move(req), HostClient::kKeyTimeoutMs);
   EnsureEvents();
 }

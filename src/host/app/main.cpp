@@ -33,6 +33,7 @@ constexpr UINT kCmdDock = 102;
 constexpr UINT kCmdAutoShow = 103;
 constexpr UINT kCmdAlwaysShow = 104;
 constexpr UINT kCmdTouchKeyboard = 105;
+constexpr UINT kCmdShowOnSwitch = 106;
 constexpr UINT_PTR kSwitchTimer = 1;
 constexpr UINT kSwitchFallbackMs = 300;
 
@@ -171,9 +172,11 @@ class HostApp {
       e.scopes = info.scopes;
       e.touch = info.touch;
       e.read_only = info.read_only;
+      e.switched = info.focused && info.activated && foreground::SettledIn(info.tid);
       panel_->PostFocusEvent(std::move(e));
     });
 
+    foreground::Start();
     if (args.take_over_touch_keyboard) touch_keyboard::TakeOver();
     AddTrayIcon();
     if (args.show) panel_->Show();
@@ -182,6 +185,7 @@ class HostApp {
 
   void Shutdown() {
     RemoveTrayIcon();
+    foreground::Stop();
     server_.reset();  // before the engine: connection threads call into it
     events_.reset();
     engine_.Stop();
@@ -211,9 +215,10 @@ class HostApp {
         if (LOWORD(wp) == kCmdTouchKeyboard) {
           touch_keyboard::IsTakenOver() ? touch_keyboard::Restore() : touch_keyboard::TakeOver();
         }
-        if (LOWORD(wp) == kCmdAutoShow || LOWORD(wp) == kCmdAlwaysShow) {
+        if (LOWORD(wp) == kCmdAutoShow || LOWORD(wp) == kCmdAlwaysShow || LOWORD(wp) == kCmdShowOnSwitch) {
           auto& s = self->panel_->settings();
-          (LOWORD(wp) == kCmdAutoShow ? s.auto_show : s.always_show) ^= true;
+          (LOWORD(wp) == kCmdAutoShow ? s.auto_show : LOWORD(wp) == kCmdAlwaysShow ? s.always_show : s.show_on_switch) ^=
+              true;
           self->panel_->SaveSettings();
         }
         if (LOWORD(wp) == kCmdExit) PostQuitMessage(0);
@@ -262,6 +267,7 @@ class HostApp {
     AppendMenuW(menu, MF_STRING | (s.auto_show ? MF_CHECKED : 0), kCmdAutoShow, L"触摸输入框时自动弹出键盘");
     AppendMenuW(menu, MF_STRING | (s.always_show ? MF_CHECKED : 0) | (s.auto_show ? 0 : MF_GRAYED), kCmdAlwaysShow,
                 L"任何方式聚焦输入框都弹出（无触摸屏时）");
+    AppendMenuW(menu, MF_STRING | (s.show_on_switch ? MF_CHECKED : 0), kCmdShowOnSwitch, L"切换到 T9Ime 时弹出键盘");
     AppendMenuW(menu, MF_STRING | (touch_keyboard::IsTakenOver() ? MF_CHECKED : 0), kCmdTouchKeyboard,
                 compat::Os().AtLeastWin10() ? L"关闭系统触摸键盘的自动弹出" : L"关闭系统输入面板图标");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);

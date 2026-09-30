@@ -47,6 +47,22 @@ TEST_CASE("auto show: InputScope picks the layout") {
   CHECK(DecideOnFocus(In(true, {63}), s, Mode::kChinese, true).mode == Mode::kNumber);       // numeric password
 }
 
+TEST_CASE("auto show: switching to T9Ime shows the panel") {
+  AutoShowSettings s;
+  FocusEvent e = In(false, {29});
+  e.switched = true;
+  const AutoDecision d = DecideOnFocus(e, s, Mode::kChinese, true);
+  CHECK(d.action == AutoAction::kShow);
+  CHECK(d.mode == Mode::kNumber);
+  s.auto_show = false;  // independent of the touch pop-up
+  CHECK(DecideOnFocus(e, s, Mode::kChinese, true).action == AutoAction::kShow);
+  s.show_on_switch = false;
+  CHECK(DecideOnFocus(e, s, Mode::kChinese, true).action == AutoAction::kNone);
+  s.show_on_switch = true;
+  e.read_only = true;
+  CHECK(DecideOnFocus(e, s, Mode::kChinese, true).action == AutoAction::kHide);
+}
+
 TEST_CASE("auto show: never under system overlays on Windows 10+") {
   AutoShowSettings s;
   CHECK(DecideOnFocus(In(true, {}, L"SearchHost.exe"), s, Mode::kChinese, true).action == AutoAction::kNone);

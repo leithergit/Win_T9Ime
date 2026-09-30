@@ -165,3 +165,9 @@
 - 反馈 1"点密码框面板消失，无法输密码"：新增**字母面板**（Mode::kLetters）。密码 / 私密 / 字母数字 PIN 输入框自动切到此面板：九宫格按键多击选字母（900 ms 内再点同键换下一个字母），长按输入数字，"大小写"键切换大小写，右列有退格与空格。字母直接用 SendInput 送出，不经引擎，也不进入组合。Win7 的密码 Edit 不走 TSF，TIP 识别 ES_PASSWORD 后以"无上下文"焦点上报，Host 对其只用 SendInput。
 - 反馈 2"点密码框时出现系统输入面板图标"：接管系统触摸键盘时，Win7 另写用户策略 `HKCU\Software\Policies\Microsoft\TabletTip.7` 的 HideIPTIPTouchTarget / HideIPTIPTarget / DisableEdgeTarget（先备份，取消接管时还原），并重启输入面板进程使之生效。托盘开关在所有系统上显示（Win7 显示为"关闭系统输入面板图标"），命令行 `--take-over-touch-keyboard` 也可开启。
 - e2e 回归修复：Host 预热期间 TIP 的请求超时会断开管道，重连后 Host 不知道焦点 → 推送退回 SendInput（push e2e 偶发失败）。现在管道请求带序号，超时不断开（下一次调用跳过迟到的应答，连续 3 次超时才断开）；重连后 TIP 重新上报焦点。Hello/FocusIn 不再排队等引擎。e2e 启动 Host 时确认管道归属（避免其它程序的 TIP 拉起的后台 Host 抢占）；panel e2e 每次重置面板尺寸。连续 6 轮 e2e 中 5 轮全过、1 次 autoshow 偶发失败（单独重跑 3 次均过）。
+
+## 2026-09-30 — 切换到 T9Ime 时自动弹出面板
+
+- 用户决定：切换到 T9Ime 时弹出面板（默认开，托盘"切换到 T9Ime 时弹出键盘"可关，ini `show_on_switch`）。
+- TIP 在 ActivateEx 中上报焦点时带 `kFocusActivated`。TSF 在线程首次获得焦点时也会激活 TIP（新打开 / 切到前台的程序），为区分"用户切换"：Host 用进程外 WinEvent 钩子记录前台窗口变化，只有激活线程拥有前台窗口、且该窗口已在前台 ≥1.5 s（或短暂离开后回到它，如点任务栏语言栏）时才算用户切换。只读框不弹；布局按 InputScope 选。
+- test_target 收到 WM_APP+1 时切到 T9Ime（模拟用户切换）；autoshow e2e 新增切换场景，并已有"启动即激活不弹出"的反例（鼠标聚焦不弹）。x64 e2e 两轮全过。

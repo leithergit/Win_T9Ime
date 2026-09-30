@@ -50,7 +50,8 @@ AutoDecision DecideOnFocus(const FocusEvent& e, const AutoShowSettings& settings
     return d;
   }
   if (win8_or_later && IsSystemOverlay(e.exe)) return d;
-  if (!settings.auto_show || !(e.touch || settings.always_show)) return d;
+  const bool by_focus = settings.auto_show && (e.touch || settings.always_show);
+  if (!by_focus && !(e.switched && settings.show_on_switch)) return d;
   d.action = AutoAction::kShow;
   d.mode = ModeForScopes(e.scopes, text_mode);
   return d;

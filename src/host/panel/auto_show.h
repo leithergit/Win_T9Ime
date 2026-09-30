@@ -13,6 +13,7 @@ namespace t9ime::panel {
 struct AutoShowSettings {
   bool auto_show = true;     // pop up when a field is focused by touch / pen
   bool always_show = false;  // pop up on every focus (devices without touch, testing)
+  bool show_on_switch = true;  // pop up when the user switches the focused application to T9Ime
 };
 
 struct FocusEvent {
@@ -21,6 +22,7 @@ struct FocusEvent {
   std::vector<uint32_t> scopes;  // InputScope values
   bool touch = false;
   bool read_only = false;
+  bool switched = false;  // T9Ime was just activated by the user in the focused application
 };
 
 enum class AutoAction { kNone, kShow, kHide };

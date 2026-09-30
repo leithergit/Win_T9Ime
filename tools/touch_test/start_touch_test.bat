@@ -61,6 +61,9 @@ echo      hold a key = its digit. The password box should show 3 dots, and the
 echo      Windows Input Panel icon must NOT appear next to the box.
 echo   4. tap the big text box again, type 94664486 on the panel and tap the first candidate
 echo   5. tap the desktop           - the panel should hide
+echo   6. tap the big text box, hide the panel with its hide key, switch the input
+echo      method to English with the language bar (or Ctrl+Shift), wait 2 seconds,
+echo      then switch back to T9Ime - the panel should pop up by itself
 echo Then write down what happened for each step. Recording stops after 5 minutes.
 pause
 exit /b 0

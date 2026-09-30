@@ -3,12 +3,14 @@
 // Below it: an Edit with InputScope IS_NUMBER and a password Edit.
 //   --activate-tip       switch this process to the T9Ime TSF profile
 //   --activate-english   switch this process to the US English keyboard
+// Posting WM_APP + 1 to the window switches to T9Ime later (a user's switch).
 // Either way the previous input method is restored on close.
 #include <windows.h>
 #include <msctf.h>
 #include <shellapi.h>
 
 void RestorePrevious();
+bool ActivateProfile(bool t9ime);
 
 namespace {
 HWND g_edit = nullptr;
@@ -67,6 +69,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         GetWindowTextW(g_password, text, 256);
         SetWindowTextW(g_password_mirror, text);
       }
+      return 0;
+    case WM_APP + 1:
+      SetWindowTextW(hwnd, ActivateProfile(true) ? L"T9Ime TestTarget [tip]" : L"T9Ime TestTarget [tip failed]");
       return 0;
     case WM_CLOSE:
       RestorePrevious();  // still in the foreground: restores the user's input method

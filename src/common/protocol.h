@@ -82,6 +82,7 @@ constexpr uint32_t kFlagAppContainer = 1;
 constexpr uint32_t kFlagElevated = 2;
 // FocusIn flags
 constexpr uint32_t kFocusNoContext = 4;  // focused field has no TSF document (IMM disabled): no pushes
+constexpr uint32_t kFocusActivated = 8;  // reported while T9Ime is being activated in this thread
 
 class Writer {
  public:

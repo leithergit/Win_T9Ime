@@ -80,9 +80,10 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
     return ack.Finish();
   }
   if (req.type() == MsgType::kFocusIn) {
+    const uint32_t flags = req.U32Or(kTagFlags, 0);
     focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
                    req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false),
-                   req.StrOr(kTagText), (req.U32Or(kTagFlags, 0) & kFocusNoContext) != 0);
+                   req.StrOr(kTagText), (flags & kFocusNoContext) != 0, (flags & kFocusActivated) != 0);
     return Writer(MsgType::kAck, seq).Finish();
   }
   if (req.type() == MsgType::kDiagnostics) {
@@ -98,19 +99,6 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
     }
     bool eaten = false;
     switch (req.type()) {
-      case MsgType::kHello: {
-        focus_.Register(client, req.U32Or(kTagPid, 0), req.U32Or(kTagTid, 0), req.StrOr(kTagExe));
-        Writer ack(MsgType::kAck, seq);
-        ack.U32(kTagClient, static_cast<uint32_t>(client));
-        out = ack.Finish();
-        return;
-      }
-      case MsgType::kFocusIn:
-        focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
-                       req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false),
-                       req.StrOr(kTagText), (req.U32Or(kTagFlags, 0) & kFocusNoContext) != 0);
-        out = Writer(MsgType::kAck, seq).Finish();
-        return;
       case MsgType::kFocusOut:
         s->Clear();
         focus_.FocusOut(client);

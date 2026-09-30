@@ -105,6 +105,7 @@ bool PanelWindow::Create(HINSTANCE instance, const PanelOptions& options) {
     const wchar_t* file = options_.settings_file.c_str();
     settings_.auto_show = GetPrivateProfileIntW(L"panel", L"auto_show", 1, file) != 0;
     settings_.always_show = GetPrivateProfileIntW(L"panel", L"always_show", 0, file) != 0;
+    settings_.show_on_switch = GetPrivateProfileIntW(L"panel", L"show_on_switch", 1, file) != 0;
   }
   if (options_.always_show) settings_.always_show = true;
   Relayout();
@@ -117,13 +118,15 @@ void PanelWindow::SaveSettings() {
   const wchar_t* file = options_.settings_file.c_str();
   WritePrivateProfileStringW(L"panel", L"auto_show", settings_.auto_show ? L"1" : L"0", file);
   WritePrivateProfileStringW(L"panel", L"always_show", settings_.always_show ? L"1" : L"0", file);
+  WritePrivateProfileStringW(L"panel", L"show_on_switch", settings_.show_on_switch ? L"1" : L"0", file);
 }
 
 std::wstring PanelWindow::Describe() {
   std::lock_guard lock(focus_mutex_);
   std::wstring s = L"panel: " + std::wstring(visible() ? L"visible" : L"hidden") +
                    (auto_shown_ ? L" (auto-shown)" : L"") + L", auto_show=" + (settings_.auto_show ? L"1" : L"0") +
-                   L" always_show=" + (settings_.always_show ? L"1" : L"0") + L"\n";
+                   L" always_show=" + (settings_.always_show ? L"1" : L"0") +
+                   L" show_on_switch=" + (settings_.show_on_switch ? L"1" : L"0") + L"\n";
   s += L"last focus event: " + Utf8ToWide(last_focus_) + L"\n";
   return s;
 }
@@ -143,7 +146,8 @@ void PanelWindow::OnFocusEvents() {
     events.swap(focus_events_);
   }
   for (const FocusEvent& e : events) {
-    last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + " scopes=";
+    last_focus_ = std::string(e.focus_in ? "in" : "out") + (e.touch ? " touch" : "") + (e.switched ? " switched" : "") +
+                  " scopes=";
     for (uint32_t sc : e.scopes) last_focus_ += std::to_string(sc) + ",";
     const AutoDecision d = DecideOnFocus(e, settings_, text_mode_, compat::Os().AtLeastWin10());
     {
