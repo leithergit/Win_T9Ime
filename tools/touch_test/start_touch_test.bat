@@ -54,11 +54,11 @@ echo.
 echo Now use your FINGER:
 echo   1. tap the big text box      - the nine-key panel should pop up
 echo   2. tap the middle number box - the panel should switch to digits
-echo   3. tap the bottom password box - the panel shows letter keys (abc, def ...)
-echo      tap "abc" twice quickly = b, "def" once = d, the case key (right column,
-echo      middle) then "abc" = A,
-echo      hold a key = its digit. The password box should show 3 dots, and the
-echo      Windows Input Panel icon must NOT appear next to the box.
+echo   3. tap the bottom password box - the panel becomes a full English keyboard
+echo      (QWERTY). Type b, d, then the shift key and A, then x: the pressed key
+echo      shows enlarged above your finger; the box shows 4 dots. Hold a key to
+echo      type its small character (e.g. hold q = 1). The Windows Input Panel
+echo      icon must NOT appear next to the box.
 echo   4. tap the big text box again, type 94664486 on the panel and tap the first candidate
 echo   5. tap the desktop           - the panel should hide
 echo   6. tap the big text box, hide the panel with its hide key, switch the input

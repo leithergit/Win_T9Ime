@@ -27,14 +27,44 @@ constexpr D2D1_DRAW_TEXT_OPTIONS kColorFontOption = static_cast<D2D1_DRAW_TEXT_O
 
 }  // namespace
 
+// After the iFlytek iOS keyboard (Docs/T9.jpg): slate gradient background,
+// light keys, darker function keys with white labels, a shadow under each key.
 Theme Theme::Light() {
-  return {Rgb(0xD5D8DE), Rgb(0xFFFFFF), Rgb(0xB5BAC3), Rgb(0x9DA3AD), Rgb(0x16181C),
-          Rgb(0x6B7079), Rgb(0x1E6FD9), Rgb(0xC7CBD2), Rgb(0xDCE8FA)};
+  Theme t;
+  t.background = Rgb(0x9A9EA8);
+  t.background_bottom = Rgb(0x4E5462);
+  t.key = Rgb(0xFBFBFC);
+  t.key_bottom = Rgb(0xDADBDF);
+  t.function_key = Rgb(0x8A8F9A);
+  t.function_key_bottom = Rgb(0x5D6270);
+  t.pressed = Rgb(0xB4B8C1);
+  t.text = Rgb(0x111214);
+  t.subtext = Rgb(0x4A4E56);
+  t.function_text = Rgb(0xFFFFFF);
+  t.accent = Rgb(0x1E6FD9);
+  t.strip = Rgb(0xE6E8EC);
+  t.candidate_pressed = Rgb(0xC9D6EA);
+  t.shadow = Rgb(0x30343C);
+  return t;
 }
 
 Theme Theme::Dark() {
-  return {Rgb(0x1C1E22), Rgb(0x3A3E45), Rgb(0x2A2D32), Rgb(0x5C626C), Rgb(0xEDEEF0),
-          Rgb(0x9CA1AA), Rgb(0x5AA2FF), Rgb(0x25282D), Rgb(0x2B3A52)};
+  Theme t;
+  t.background = Rgb(0x34373E);
+  t.background_bottom = Rgb(0x1C1E22);
+  t.key = Rgb(0x5A5E66);
+  t.key_bottom = Rgb(0x464A51);
+  t.function_key = Rgb(0x3A3D44);
+  t.function_key_bottom = Rgb(0x2C2F34);
+  t.pressed = Rgb(0x70757E);
+  t.text = Rgb(0xF2F3F5);
+  t.subtext = Rgb(0xB4B8C0);
+  t.function_text = Rgb(0xF2F3F5);
+  t.accent = Rgb(0x5AA2FF);
+  t.strip = Rgb(0x25282D);
+  t.candidate_pressed = Rgb(0x2B3A52);
+  t.shadow = Rgb(0x0E0F11);
+  return t;
 }
 
 PanelRenderer::~PanelRenderer() {
@@ -45,6 +75,7 @@ PanelRenderer::~PanelRenderer() {
   SafeRelease(candidate_format_);
   SafeRelease(side_format_);
   SafeRelease(strip_format_);
+  SafeRelease(preview_format_);
   SafeRelease(dwrite_);
   SafeRelease(d2d_);
 }
@@ -72,13 +103,15 @@ bool PanelRenderer::Initialize() {
   // Color glyphs (emoji) need Windows 8.1+; emoji are disabled on Windows 7 anyway.
   color_fonts_ = compat::Os().AtLeastWin10();
 
-  key_format_ = CreateFormat(20, DWRITE_TEXT_ALIGNMENT_CENTER);
-  sub_format_ = CreateFormat(11, DWRITE_TEXT_ALIGNMENT_CENTER);
+  key_format_ = CreateFormat(22, DWRITE_TEXT_ALIGNMENT_CENTER, true);
+  sub_format_ = CreateFormat(12, DWRITE_TEXT_ALIGNMENT_CENTER);
   function_format_ = CreateFormat(16, DWRITE_TEXT_ALIGNMENT_CENTER);
   candidate_format_ = CreateFormat(19, DWRITE_TEXT_ALIGNMENT_CENTER);
   side_format_ = CreateFormat(16, DWRITE_TEXT_ALIGNMENT_CENTER);
   strip_format_ = CreateFormat(13, DWRITE_TEXT_ALIGNMENT_LEADING);
-  return key_format_ && sub_format_ && function_format_ && candidate_format_ && side_format_ && strip_format_;
+  preview_format_ = CreateFormat(34, DWRITE_TEXT_ALIGNMENT_CENTER, true);
+  return key_format_ && sub_format_ && function_format_ && candidate_format_ && side_format_ && strip_format_ &&
+         preview_format_;
 }
 
 IDWriteTextFormat* PanelRenderer::CreateFormat(float size, DWRITE_TEXT_ALIGNMENT align, bool bold) {
@@ -109,6 +142,7 @@ float PanelRenderer::MeasureCandidate(const std::wstring& text) {
 
 void PanelRenderer::ReleaseTarget() {
   SafeRelease(brush_);
+  for (auto& g : gradients_) SafeRelease(g);
   SafeRelease(target_);
 }
 
@@ -144,16 +178,75 @@ void PanelRenderer::DrawText(const std::wstring& text, IDWriteTextFormat* format
                                  : D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
+ID2D1LinearGradientBrush* PanelRenderer::Gradient(const D2D1_COLOR_F& top, const D2D1_COLOR_F& bottom, float y0,
+                                                   float y1) {
+  auto same = [](const D2D1_COLOR_F& a, const D2D1_COLOR_F& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+  };
+  int slot = -1;
+  for (int i = 0; i < 3 && slot < 0; ++i) {
+    if (gradients_[i] && same(gradient_colors_[i][0], top) && same(gradient_colors_[i][1], bottom)) slot = i;
+  }
+  if (slot < 0) {
+    for (int i = 0; i < 3 && slot < 0; ++i) {
+      if (!gradients_[i]) slot = i;
+    }
+    if (slot < 0) {  // theme changed: start over
+      for (auto& g : gradients_) SafeRelease(g);
+      slot = 0;
+    }
+    const D2D1_GRADIENT_STOP stops[2] = {{0.f, top}, {1.f, bottom}};
+    ID2D1GradientStopCollection* collection = nullptr;
+    if (FAILED(target_->CreateGradientStopCollection(stops, 2, &collection))) return nullptr;
+    target_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, 1)),
+                                       collection, &gradients_[slot]);
+    collection->Release();
+    if (!gradients_[slot]) return nullptr;
+    gradient_colors_[slot][0] = top;
+    gradient_colors_[slot][1] = bottom;
+  }
+  gradients_[slot]->SetStartPoint(D2D1::Point2F(0, y0));
+  gradients_[slot]->SetEndPoint(D2D1::Point2F(0, y1));
+  return gradients_[slot];
+}
+
 void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Theme& theme,
                            const std::vector<ElementKey>& pressed) {
   if (!EnsureTarget(hwnd, dpi)) return;
   target_->BeginDraw();
   target_->SetTransform(D2D1::Matrix3x2F::Identity());
   target_->Clear(theme.background);
+  const D2D1_SIZE_F size = target_->GetSize();
+  if (auto* bg = Gradient(theme.background, theme.background_bottom, 0, size.height)) {
+    target_->FillRectangle(D2D1::RectF(0, 0, size.width, size.height), bg);
+  }
 
-  // Handle strip.
+  // Handle strip, candidate bar and expanded candidates on a light surface.
   brush_->SetColor(theme.strip);
   target_->FillRectangle(ToD2D(layout.handle), brush_);
+  for (const RegionRect& r : layout.regions) {
+    const bool candidates = r.region == Region::kCandidateBar ||
+                            (r.region == Region::kGrid &&
+                             std::any_of(layout.elements.begin(), layout.elements.end(), [](const Element& e) {
+                               return e.action == Action::kCandidate && e.region == Region::kGrid;
+                             }));
+    if (candidates) {
+      target_->FillRectangle(D2D1::RectF(0, r.rect.y, size.width, r.rect.Bottom()), brush_);
+    }
+    if (r.region == Region::kSideList) {  // one function key holding the list
+      const float gap = Metrics::kGap;
+      const D2D1_RECT_F side = D2D1::RectF(r.rect.x + gap, r.rect.y + gap, r.rect.Right() - gap, r.rect.Bottom() - gap);
+      brush_->SetColor(theme.shadow);
+      target_->FillRoundedRectangle(
+          D2D1::RoundedRect(D2D1::RectF(side.left, side.top + 1.5f, side.right, side.bottom + 1.5f), kKeyRadius,
+                            kKeyRadius),
+          brush_);
+      if (auto* g = Gradient(theme.function_key, theme.function_key_bottom, side.top, side.bottom)) {
+        target_->FillRoundedRectangle(D2D1::RoundedRect(side, kKeyRadius, kKeyRadius), g);
+      }
+      brush_->SetColor(theme.strip);
+    }
+  }
 
   for (const Element& e : layout.elements) {
     const bool is_pressed = std::find(pressed.begin(), pressed.end(), ElementKey::Of(e)) != pressed.end();
@@ -195,30 +288,69 @@ void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Them
       case Action::kText:
         if (e.region == Region::kSideList || (e.region == Region::kGrid && e.action != Action::kText)) {
           // list items: flat, pressed / selected highlight
+          const bool side = e.region == Region::kSideList;
           if (is_pressed || e.selected) {
             brush_->SetColor(is_pressed ? theme.pressed : theme.key);
             target_->FillRoundedRectangle(D2D1::RoundedRect(rect, kKeyRadius, kKeyRadius), brush_);
           }
-          DrawText(e.label, e.region == Region::kGrid ? candidate_format_ : side_format_, rect, theme.text);
+          DrawText(e.label, side ? side_format_ : candidate_format_, rect,
+                   side && !is_pressed && !e.selected ? theme.function_text : theme.text);
           break;
         }
         [[fallthrough]];
       default: {
-        brush_->SetColor(is_pressed ? theme.pressed : e.function_key ? theme.function_key : theme.key);
-        target_->FillRoundedRectangle(D2D1::RoundedRect(rect, kKeyRadius, kKeyRadius), brush_);
-        if (e.sublabel.empty()) {
-          DrawText(e.label, e.function_key ? function_format_ : key_format_, rect, theme.text);
+        // Shadow, then the key face (gradient; flat when pressed or toggled on).
+        brush_->SetColor(theme.shadow);
+        target_->FillRoundedRectangle(
+            D2D1::RoundedRect(D2D1::RectF(rect.left, rect.top + 1.5f, rect.right, rect.bottom + 1.5f), kKeyRadius,
+                              kKeyRadius),
+            brush_);
+        const bool function = e.function_key && !(e.selected && e.action == Action::kShift);
+        ID2D1Brush* face = nullptr;
+        if (is_pressed) {
+          brush_->SetColor(theme.pressed);
+          face = brush_;
         } else {
-          const float split = rect.top + (rect.bottom - rect.top) * 0.62f;
+          face = function ? Gradient(theme.function_key, theme.function_key_bottom, rect.top, rect.bottom)
+                          : Gradient(theme.key, theme.key_bottom, rect.top, rect.bottom);
+          if (!face) {
+            brush_->SetColor(function ? theme.function_key : theme.key);
+            face = brush_;
+          }
+        }
+        target_->FillRoundedRectangle(D2D1::RoundedRect(rect, kKeyRadius, kKeyRadius), face);
+        const D2D1_COLOR_F text = function && !is_pressed ? theme.function_text : theme.text;
+        if (e.sublabel.empty()) {
+          DrawText(e.label, e.function_key ? function_format_ : key_format_, rect, text);
+        } else {  // small digit / long-press character on top, the key itself below
+          const float split = rect.top + (rect.bottom - rect.top) * 0.36f;
+          DrawText(e.sublabel, sub_format_, D2D1::RectF(rect.left, rect.top + 2, rect.right, split + 2),
+                   function && !is_pressed ? theme.function_text : theme.subtext);
           DrawText(e.label, e.function_key ? function_format_ : key_format_,
-                   D2D1::RectF(rect.left, rect.top, rect.right, split + 2), theme.text);
-          DrawText(e.sublabel, sub_format_, D2D1::RectF(rect.left, split - 2, rect.right, rect.bottom - 2),
-                   theme.subtext);
+                   D2D1::RectF(rect.left, split - 4, rect.right, rect.bottom - 2), text);
         }
         break;
       }
     }
     if (clipped) target_->PopAxisAlignedClip();
+  }
+
+  // Key preview: the pressed QWERTY key, enlarged above the finger, so the
+  // user sees what is typed (passwords show only dots in the field).
+  for (const Element& e : layout.elements) {
+    if (e.action != Action::kLetter ||
+        std::find(pressed.begin(), pressed.end(), ElementKey::Of(e)) == pressed.end()) {
+      continue;
+    }
+    const float w = e.rect.w * 1.5f, h = e.rect.h * 1.15f;
+    const float x = std::clamp(e.rect.x + e.rect.w / 2 - w / 2, 0.f, std::max(0.f, layout.handle.w - w));
+    const float y = std::max(0.f, e.rect.y - h + e.rect.h * 0.1f);
+    const D2D1_RECT_F bubble = D2D1::RectF(x, y, x + w, y + h);
+    brush_->SetColor(theme.key);
+    target_->FillRoundedRectangle(D2D1::RoundedRect(bubble, kKeyRadius, kKeyRadius), brush_);
+    brush_->SetColor(theme.accent);
+    target_->DrawRoundedRectangle(D2D1::RoundedRect(bubble, kKeyRadius, kKeyRadius), brush_, 1.5f);
+    DrawText(e.label, preview_format_, bubble, theme.text);
   }
 
   if (target_->EndDraw() == D2DERR_RECREATE_TARGET) ReleaseTarget();

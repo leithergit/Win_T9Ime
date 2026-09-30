@@ -19,7 +19,7 @@ constexpr UINT_PTR kLongPressTimer = 1;
 constexpr UINT_PTR kRepeatTimer = 2;
 constexpr UINT_PTR kAutoHideTimer = 3;
 constexpr UINT kAutoHideMs = 300;  // focus may just be moving to another field
-constexpr ULONGLONG kMultiTapMs = 900;  // same key within this time: next letter
+constexpr ULONGLONG kCapsLockMs = 400;  // second shift tap within this time: caps lock
 constexpr UINT kLongPressMs = 450;
 constexpr UINT kRepeatMs = 70;
 constexpr float kScrollSlop = 8;    // DIPs before a press on a list turns into scrolling
@@ -30,8 +30,6 @@ constexpr float kMinWidth = 280, kMaxWidth = 1200, kMinHeight = 220, kMaxHeight 
 
 const std::vector<std::wstring> kChinesePunct = {L"，", L"。", L"？", L"！", L"、", L"：",
                                                  L"；", L"……", L"～", L"“", L"”"};
-const std::vector<std::wstring> kEnglishPunct = {L",", L".", L"?", L"!", L"'", L"@",
-                                                 L":", L";", L"-", L"\""};
 const std::vector<std::wstring> kNumberSymbols = {L"+", L"-", L"*", L"/", L"=", L"%",
                                                   L":", L"(", L")", L"#"};
 const std::vector<std::wstring> kSymbolCategories = {L"中文", L"英文", L"数学", L"特殊"};
@@ -93,7 +91,7 @@ bool PanelWindow::Create(HINSTANCE instance, const PanelOptions& options) {
   RegisterClassExW(&wc);
 
   if (!renderer_.Initialize()) return false;
-  theme_ = compat::SystemPrefersDark() ? Theme::Dark() : Theme::Light();
+  theme_ = (options_.theme < 0 ? compat::SystemPrefersDark() : options_.theme == 1) ? Theme::Dark() : Theme::Light();
 
   hwnd_ = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kClassName, L"T9Ime",
                           WS_POPUP, 0, 0, 400, 300, nullptr, nullptr, instance, this);
@@ -161,7 +159,7 @@ void PanelWindow::OnFocusEvents() {
       case AutoAction::kShow:
         KillTimer(hwnd_, kAutoHideTimer);
         if (!visible() && touch_keyboard::IsVisible()) break;  // the user opened the Windows keyboard
-        SetMode(d.mode);
+        SetMode(d.mode, false);
         if (!visible()) {
           Show();
           auto_shown_ = true;
@@ -320,7 +318,7 @@ LRESULT PanelWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_SETTINGCHANGE:
       if (lp && lstrcmpW(reinterpret_cast<LPCWSTR>(lp), L"ImmersiveColorSet") == 0) {
-        theme_ = compat::SystemPrefersDark() ? Theme::Dark() : Theme::Light();
+        theme_ = (options_.theme < 0 ? compat::SystemPrefersDark() : options_.theme == 1) ? Theme::Dark() : Theme::Light();
         InvalidateRect(hwnd_, nullptr, FALSE);
       }
       return 0;
@@ -488,8 +486,7 @@ void PanelWindow::LongPress(Track& t) {
       SetTimer(hwnd_, kRepeatTimer, kRepeatMs, nullptr);
       break;
     case Action::kLetter:
-      Output(Utf8ToWide(t.text));  // long press: the digit
-      multitap_ = {};
+      TypeLetter(Utf8ToWide(t.text));  // long press: the small character on the key
       break;
     case Action::kKey:
     case Action::kSpace: {
@@ -508,64 +505,49 @@ void PanelWindow::LongPress(Track& t) {
 // ---------------------------------------------------------------------------
 // Actions
 
-// Multi-tap: a quick repeat of the same key replaces the letter just typed with
-// the next one on the key (BackSpace + letter); letters go straight to the field.
-void PanelWindow::TypeLetter(char key) {
-  static constexpr const wchar_t* kKeyChars[9] = {L".,?!@-_'", L"abc", L"def", L"ghi", L"jkl",
-                                                  L"mno", L"pqrs", L"tuv", L"wxyz"};
-  if (key < '1' || key > '9') return;
-  const std::wstring chars = kKeyChars[key - '1'];
-  const ULONGLONG now = GetTickCount64();
-  const bool repeat = multitap_.key == key && now - multitap_.tick < kMultiTapMs;
-  multitap_.index = repeat ? (multitap_.index + 1) % chars.size() : 0;
-  multitap_.key = key;
-  multitap_.tick = now;
-  wchar_t c = chars[multitap_.index];
-  if (shift_) c = static_cast<wchar_t>(towupper(c));
-  if (repeat) SendVirtualKey(VK_BACK);
-  Output(std::wstring(1, c));
+// QWERTY letters go straight to the field, queued behind any engine output.
+// A one-shot shift ends with the letter.
+void PanelWindow::TypeLetter(const std::wstring& text) {
+  engine_.Post([text](Session& s, std::vector<Passthrough>& out) {
+    if (s.HasInput()) s.Space();
+    out.push_back({0, text});
+  });
+  if (shift_ && !caps_lock_) {
+    shift_ = false;
+    Relayout();
+  }
 }
 
 void PanelWindow::Execute(Action action, int index, const std::string& text, const std::wstring& label) {
-  if (action != Action::kLetter) multitap_ = {};
   switch (action) {
     case Action::kLetter:
-      TypeLetter(text.empty() ? 0 : text[0]);
+      TypeLetter(label);
       break;
-    case Action::kShift:
-      shift_ = !shift_;
+    case Action::kShift: {
+      const ULONGLONG now = GetTickCount64();
+      if (caps_lock_) {
+        caps_lock_ = shift_ = false;
+      } else if (shift_ && now - shift_tick_ < kCapsLockMs) {
+        caps_lock_ = true;
+      } else {
+        shift_ = !shift_;
+      }
+      shift_tick_ = now;
       Relayout();
       break;
+    }
     case Action::kKey: {
       const char key = text.empty() ? 0 : text[0];
-      const bool english = mode_ == Mode::kEnglish;
-      engine_.Post([key, english](Session& s, std::vector<Passthrough>&) {
-        // English: 1 (punctuation) finishes the word being typed first.
-        const std::string input = s.Input();
-        if (english && key == '1' && !input.empty() && input.back() >= '2' && input.back() <= '9') {
-          s.Space();
-        }
-        s.Key(key);
-      });
+      engine_.Post([key](Session& s, std::vector<Passthrough>&) { s.Key(key); });
       break;
     }
     case Action::kText:
-      if (mode_ == Mode::kLetters || mode_ == Mode::kNumber || mode_ == Mode::kSymbol) {
-        if (!composing()) {  // nothing pending in the engine: type directly, in order
-          Output(label);
-          break;
-        }
-      }
       engine_.Post([label](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Space();  // commit the composition first
         out.push_back({0, label});
       });
       break;
     case Action::kBackspace:
-      if (mode_ == Mode::kLetters && !composing()) {
-        SendVirtualKey(VK_BACK);
-        break;
-      }
       engine_.Post([](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Backspace(); else out.push_back({VK_BACK, {}});
       });
@@ -573,22 +555,11 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
     case Action::kClear:
       engine_.Post([](Session& s, std::vector<Passthrough>&) { s.Escape(); });
       break;
-    case Action::kSpace: {
-      if (mode_ == Mode::kLetters && !composing()) {
-        Output(L" ");
-        break;
-      }
-      const bool english = mode_ == Mode::kEnglish;
-      engine_.Post([english](Session& s, std::vector<Passthrough>& out) {
-        if (!s.HasInput()) {
-          out.push_back({0, L" "});
-          return;
-        }
-        s.Space();
-        if (english) out.push_back({0, L" "});  // word + space, like other T9 keyboards
+    case Action::kSpace:
+      engine_.Post([](Session& s, std::vector<Passthrough>& out) {
+        if (s.HasInput()) s.Space(); else out.push_back({0, L" "});
       });
       break;
-    }
     case Action::kEnter:
       engine_.Post([](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Enter(); else out.push_back({VK_RETURN, {}});
@@ -601,7 +572,7 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
       SetMode(Mode::kNumber);
       break;
     case Action::kBack:
-      SetMode(mode_ == Mode::kLetters ? text_mode_ : return_mode_);
+      SetMode(return_mode_);
       break;
     case Action::kToggleLanguage:
       SetMode(mode_ == Mode::kChinese ? Mode::kEnglish : Mode::kChinese);
@@ -631,30 +602,21 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
   }
 }
 
-void PanelWindow::SetMode(Mode mode) {
+void PanelWindow::SetMode(Mode mode, bool remember) {
   if (mode == mode_) return;
   const Mode old = mode_;
   if ((mode == Mode::kNumber || mode == Mode::kSymbol) && old != Mode::kNumber && old != Mode::kSymbol) {
     return_mode_ = old;
   }
   mode_ = mode;
-  multitap_ = {};
+  if (remember && (mode == Mode::kChinese || mode == Mode::kEnglish)) text_mode_ = mode;
+  shift_ = caps_lock_ = false;
   expanded_ = false;
   side_scroll_ = grid_scroll_ = candidate_scroll_ = 0;
-  if (mode == Mode::kChinese || mode == Mode::kEnglish) {
-    const Mode previous_text = old == Mode::kChinese || old == Mode::kEnglish ? old : text_mode_;
-    const bool switch_schema = mode != previous_text;
-    text_mode_ = mode;
-    const char* schema = mode == Mode::kChinese ? "t9" : "t9_eng";
-    engine_.Post([schema, switch_schema](Session& s, std::vector<Passthrough>&) {
-      if (s.HasInput()) s.Space();
-      if (switch_schema) s.SelectSchema(schema);
-    });
-  } else {
-    engine_.Post([](Session& s, std::vector<Passthrough>&) {
-      if (s.HasInput()) s.Space();
-    });
-  }
+  // Only the Chinese nine-key layout composes: commit whatever is pending.
+  engine_.Post([](Session& s, std::vector<Passthrough>&) {
+    if (s.HasInput()) s.Space();
+  });
   Relayout();
   InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -703,13 +665,11 @@ std::vector<std::wstring> PanelWindow::SideItems() const {
       }
       return kChinesePunct;
     case Mode::kEnglish:
-      return kEnglishPunct;
+      return {};
     case Mode::kNumber:
       return kNumberSymbols;
     case Mode::kSymbol:
       return kSymbolCategories;
-    case Mode::kLetters:
-      return kEnglishPunct;
   }
   return {};
 }
@@ -726,6 +686,7 @@ void PanelWindow::Relayout() {
   in.composing = composing();
   in.expanded = expanded_;
   in.shift = shift_;
+  in.caps_lock = caps_lock_;
   in.preedit = Utf8ToWide(snapshot_.state.preedit);
   const auto& list = snapshot_.candidates.empty() ? snapshot_.state.page : snapshot_.candidates;
   for (const Candidate& c : list) in.candidates.push_back(Utf8ToWide(c.text));

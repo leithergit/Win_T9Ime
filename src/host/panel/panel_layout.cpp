@@ -9,10 +9,9 @@ namespace {
 
 constexpr const wchar_t* kChineseKeys[9] = {L"分词", L"ABC", L"DEF", L"GHI", L"JKL",
                                             L"MNO", L"PQRS", L"TUV", L"WXYZ"};
-constexpr const wchar_t* kEnglishKeys[9] = {L".,?!", L"abc", L"def", L"ghi", L"jkl",
-                                            L"mno", L"pqrs", L"tuv", L"wxyz"};
-constexpr const wchar_t* kUpperKeys[9] = {L".,?!", L"ABC", L"DEF", L"GHI", L"JKL",
-                                          L"MNO", L"PQRS", L"TUV", L"WXYZ"};
+// QWERTY rows and the characters typed by a long press (iFlytek iOS layout).
+constexpr const wchar_t* kQwertyRows[3] = {L"qwertyuiop", L"asdfghjkl", L"zxcvbnm"};
+constexpr const wchar_t* kQwertyAlternates[3] = {L"1234567890", L"~!@#%'&*?", L"()-_:;/"};
 
 RectF Inset(RectF r, float d) { return {r.x + d, r.y + d, r.w - 2 * d, r.h - 2 * d}; }
 
@@ -56,7 +55,8 @@ Layout BuildLayout(const LayoutInput& in) {
 
   // Candidate bar.
   const float bar_y = Metrics::kHandle;
-  const bool nine_key = in.mode == Mode::kChinese || in.mode == Mode::kEnglish;
+  const bool nine_key = in.mode == Mode::kChinese;
+  const bool qwerty = in.mode == Mode::kEnglish;
   const bool show_expand = nine_key && !in.candidates.empty();
   const RectF bar{0, bar_y, in.width - (show_expand ? Metrics::kExpandButton : 0), Metrics::kCandidateBar};
   if (nine_key && !in.expanded) {
@@ -93,7 +93,7 @@ Layout BuildLayout(const LayoutInput& in) {
 
   // Side list (rows 0-2): pinyin bar, quick punctuation or symbol categories.
   const bool expanded = nine_key && in.expanded;
-  if (!expanded) {
+  if (!expanded && !qwerty) {
     const RectF side{0, top, g.side_w, 3 * g.row_h};
     out.regions.push_back({Region::kSideList, side, false});
     Action side_action = Action::kText;
@@ -153,25 +153,50 @@ Layout BuildLayout(const LayoutInput& in) {
     add(Action::kBackspace, g.Cell(4, 0), L"⌫", {}, {}, true);
     add(Action::kSpace, g.Cell(4, 1), L"空格", {}, {}, true);
     add(Action::kText, g.Cell(4, 2), L"@", {}, "@", true);
-  } else if (in.mode == Mode::kLetters) {
-    for (int k = 0; k < 9; ++k) {
-      const std::wstring digit(1, static_cast<wchar_t>(L'1' + k));
-      add(Action::kLetter, g.Cell(1 + k % 3, k / 3), in.shift ? kUpperKeys[k] : kEnglishKeys[k], digit, Utf8(digit));
+  } else if (qwerty) {
+    // Ten units per row; the whole width, rows as tall as the nine-key rows.
+    const float unit = in.width / 10;
+    auto cell = [&](float col, int row, float w) {
+      return Inset({col * unit, top + row * g.row_h, w * unit, g.row_h}, Metrics::kGap);
+    };
+    const float row_start[3] = {0, 0.5f, 1.5f};
+    for (int row = 0; row < 3; ++row) {
+      const std::wstring letters = kQwertyRows[row], alternates = kQwertyAlternates[row];
+      for (size_t i = 0; i < letters.size(); ++i) {
+        const wchar_t c = in.shift ? static_cast<wchar_t>(letters[i] - L'a' + L'A') : letters[i];
+        const std::wstring alternate(1, alternates[i]);
+        add(Action::kLetter, cell(row_start[row] + i, row, 1), std::wstring(1, c), alternate, Utf8(alternate));
+      }
     }
-    add(Action::kBackspace, g.Cell(4, 0), L"\u232B", {}, {}, true);
-    Element& shift = add(Action::kShift, g.Cell(4, 1), in.shift ? L"ABC" : L"abc", L"大小写", {}, true);
+    Element& shift = add(Action::kShift, cell(0, 2, 1.5f), in.caps_lock ? L"\u21EA" : L"\u21E7", {}, {}, true);
     shift.selected = in.shift;
-    add(Action::kSpace, g.Cell(4, 2), L"空格", L"0", "0", true);
-  } else {  // nine-key Chinese / English
-    const bool chinese = in.mode == Mode::kChinese;
+    add(Action::kBackspace, cell(8.5f, 2, 1.5f), L"\u232B", {}, {}, true);
+    add(Action::kSymbols, cell(0, 3, 1.2f), L"符号", {}, {}, true);
+    add(Action::kNumbers, cell(1.2f, 3, 1.2f), L"123", {}, {}, true);
+    add(Action::kText, cell(2.4f, 3, 0.9f), L",", {}, ",");
+    add(Action::kSpace, cell(3.3f, 3, 2.6f), L"空格", {}, {});
+    add(Action::kText, cell(5.9f, 3, 0.9f), L".", {}, ".");
+    add(Action::kToggleLanguage, cell(6.8f, 3, 1.1f), L"英/中", {}, {}, true);
+    add(Action::kHide, cell(7.9f, 3, 0.9f), L"\u2328\u25BE", {}, {}, true);
+    add(Action::kEnter, cell(8.8f, 3, 1.2f), L"换行", {}, {}, true);
+    return out;
+  } else {  // nine-key Chinese
     for (int k = 0; k < 9; ++k) {
       const std::wstring digit(1, static_cast<wchar_t>(L'1' + k));
-      add(Action::kKey, g.Cell(1 + k % 3, k / 3), chinese ? kChineseKeys[k] : kEnglishKeys[k], digit,
-          Utf8(digit));
+      add(Action::kKey, g.Cell(1 + k % 3, k / 3), kChineseKeys[k], digit, Utf8(digit));
     }
     add(Action::kBackspace, g.Cell(4, 0), L"⌫", {}, {}, true);
-    add(Action::kClear, g.Cell(4, 1), L"重输", {}, {}, true);
-    add(Action::kSpace, g.Cell(4, 2), L"空格", L"0", "0", true);
+    add(Action::kClear, g.Cell(4, 1), L"清空", {}, {}, true);
+    add(Action::kSymbols, g.Cell(4, 2), L"符号", {}, {}, true);
+    // Bottom row: narrow 123 and 中/英 around a wide space key.
+    const float y = top + 3 * g.row_h, x = g.side_w;
+    add(Action::kHide, g.Cell(0, 3), L"⌨▾", {}, {}, true);
+    add(Action::kNumbers, Inset({x, y, 0.6f * g.key_w, g.row_h}, Metrics::kGap), L"123", {}, {}, true);
+    add(Action::kSpace, Inset({x + 0.6f * g.key_w, y, 1.8f * g.key_w, g.row_h}, Metrics::kGap), L"空格", L"0", "0");
+    add(Action::kToggleLanguage, Inset({x + 2.4f * g.key_w, y, 0.6f * g.key_w, g.row_h}, Metrics::kGap), L"中/英",
+        {}, {}, true);
+    add(Action::kEnter, g.Cell(4, 3), L"换行", {}, {}, true);
+    return out;
   }
 
   // Bottom row.
@@ -180,24 +205,13 @@ Layout BuildLayout(const LayoutInput& in) {
     add(Action::kText, g.Cell(1, 3), L".", {}, ".");
     add(Action::kText, g.Cell(2, 3), L"0", {}, "0");
     add(Action::kText, g.Cell(3, 3), L",", {}, ",");
-  } else if (in.mode == Mode::kLetters) {
-    add(Action::kSymbols, g.Cell(0, 3), L"符号", {}, {}, true);
-    add(Action::kNumbers, g.Cell(1, 3), L"123", {}, {}, true);
-    add(Action::kBack, g.Cell(2, 3), L"中/英", {}, {}, true);
-    add(Action::kHide, g.Cell(3, 3), L"\u2328\u25BE", {}, {}, true);
   } else if (in.mode == Mode::kSymbol) {
     add(Action::kBack, g.Cell(0, 3), L"返回", {}, {}, true);
     add(Action::kNumbers, g.Cell(1, 3), L"123", {}, {}, true);
     add(Action::kSpace, g.Cell(2, 3), L"空格", {}, {}, true);
     add(Action::kBackspace, g.Cell(3, 3), L"⌫", {}, {}, true);
-  } else {
-    add(Action::kSymbols, g.Cell(0, 3), L"符号", {}, {}, true);
-    add(Action::kNumbers, g.Cell(1, 3), L"123", {}, {}, true);
-    add(Action::kToggleLanguage, g.Cell(2, 3), in.mode == Mode::kChinese ? L"中" : L"英", L"中/英", {},
-        true);
-    add(Action::kHide, g.Cell(3, 3), L"⌨▾", {}, {}, true);
   }
-  add(Action::kEnter, g.Cell(4, 3), L"回车", {}, {}, true);
+  add(Action::kEnter, g.Cell(4, 3), L"换行", {}, {}, true);
   return out;
 }
 

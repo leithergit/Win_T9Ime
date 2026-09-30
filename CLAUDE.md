@@ -24,7 +24,7 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - TIP 端到端：`py -3 tests/e2e/tip_e2e.py --host <x64 bin>/T9Host.exe --target <x64|x86 bin>/test_target.exe`（`ctest -L e2e` 也会跑；未注册时跳过）。构建前先 `taskkill /im T9Host.exe /f`，否则 exe 被占用。
 - **Win7 虚拟机自动化**（VMware，`vmrun`，密码在 git 忽略的 `tests/vm_pass.txt`）：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` 打包后，`cd tools && py -3 vm_deploy.py`（注销旧版、拷入新包、注册、启动 Host），`py -3 vm_e2e.py [panel tip push autoshow switch]` 在虚拟机桌面跑端到端（Python 3.8 免安装版在 `C:	9test\py`）。`py -3 tools/vm.py cmd|shot|put|get|ps` 做单项操作。虚拟机里点击用窗口消息投递（`T9IME_CLICK=post`），因为 VMware 绝对指针会把光标拉回主机鼠标位置；键盘注入正常；Win7 无 InjectTouchInput，触摸项跳过。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
-- T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance`。
+- T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance --theme light|dark --always-show --take-over-touch-keyboard`。
 - 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
 
 ## 编码规范
@@ -36,7 +36,8 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 
 ## 已知陷阱
 - librime 的 maintenance 按文件 mtime 判断是否重建；zip（2 秒精度、本地时区）解压后会触发约 7 s 的重建。因此 **RimeEngine 默认不跑 maintenance**（`Options::maintenance=false`），直接用预部署数据。代价：用户改配置后必须显式重新部署；升级时要清理用户目录 `build/`（staging 会遮蔽新的预部署数据）——M6 处理。
-- 英文九键是独立方案 `t9_eng`（`data/custom/t9_eng.schema.yaml`，xlit 数字码，单独 prism）。不要把 melt_eng 挂进 t9：非主翻译器的 prism 不会被部署，而且 derive 会让英文 prism 膨胀。
+- 面板英文模式是 QWERTY 全键盘，字母直接上屏，不经引擎（密码框也用它）；中文九宫格与英文键盘外观参照 `Docs/T9.jpg`、`Docs/T9_ABC.jpg`。
+- 英文九键是独立方案 `t9_eng`（面板已不用，仅 t9repl 回归）（`data/custom/t9_eng.schema.yaml`，xlit 数字码，单独 prism）。不要把 melt_eng 挂进 t9：非主翻译器的 prism 不会被部署，而且 derive 会让英文 prism 膨胀。
 - `RimeContext.composition.cursor_pos/sel_*` 是 preedit 的 **UTF-8 字节偏移**。
 - 官方 librime 无 `t9_processor`：回车会上屏原始数字、退格逐字母删，需前端实现语义。
 - rime-ice 不带 opencc s2t 数据，需从 rime-deps 包补。

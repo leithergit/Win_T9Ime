@@ -36,9 +36,11 @@ Mode ModeForScopes(const std::vector<uint32_t>& scopes, Mode text_mode) {
                    kNumericPin, kNumericPassword})) {
     return Mode::kNumber;
   }
-  // Passwords: letters typed directly (no composition, no word prediction).
-  if (Has(scopes, {kPassword, kPrivate, kAlphanumericPin})) return Mode::kLetters;
-  if (Has(scopes, {kUrl, kEmailUser, kEmailAddress, kEmailNameOrAddress, kLoginName})) return Mode::kEnglish;
+  // Passwords, addresses, user names: the QWERTY keyboard (letters typed directly).
+  if (Has(scopes, {kPassword, kPrivate, kAlphanumericPin, kUrl, kEmailUser, kEmailAddress, kEmailNameOrAddress,
+                   kLoginName})) {
+    return Mode::kEnglish;
+  }
   return text_mode;
 }
 

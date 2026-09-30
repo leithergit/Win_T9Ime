@@ -43,7 +43,7 @@ TEST_CASE("auto show: InputScope picks the layout") {
   CHECK(DecideOnFocus(In(true, {0}), s, Mode::kEnglish, true).mode == Mode::kEnglish);       // default: text mode
   const AutoDecision pw = DecideOnFocus(In(true, {31}), s, Mode::kChinese, true);  // IS_PASSWORD
   CHECK(pw.action == AutoAction::kShow);
-  CHECK(pw.mode == Mode::kLetters);
+  CHECK(pw.mode == Mode::kEnglish);  // QWERTY
   CHECK(DecideOnFocus(In(true, {63}), s, Mode::kChinese, true).mode == Mode::kNumber);       // numeric password
 }
 

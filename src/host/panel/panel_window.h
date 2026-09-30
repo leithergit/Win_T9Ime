@@ -29,6 +29,7 @@ struct PanelOptions {
   std::wstring settings_file;  // position / size persistence; empty = none
   std::wstring dump_layout;    // test hook: write element screen positions after each paint
   bool always_show = false;    // command line override of AutoShowSettings::always_show
+  int theme = -1;              // -1 follow the system, 0 light, 1 dark (debugging)
 };
 
 class PanelWindow {
@@ -101,7 +102,10 @@ class PanelWindow {
   float Scale() const { return dpi_ / 96.f; }
   void ScreenToDip(POINT screen, float* x, float* y) const;
   void ApplyScroll(Region region, float delta);
-  void SetMode(Mode mode);
+  // `remember`: a user's choice of Chinese / English becomes the text mode for
+  // ordinary fields; layouts picked for a field (InputScope) do not.
+  void SetMode(Mode mode, bool remember = true);
+  void TypeLetter(const std::wstring& text);
   bool composing() const { return !snapshot_.state.input.empty(); }
   std::vector<std::wstring> SideItems() const;
   void PlaceDefault();
@@ -132,13 +136,9 @@ class PanelWindow {
   Mode mode_ = Mode::kChinese;
   Mode text_mode_ = Mode::kChinese;  // Chinese / English: the text mode for ordinary fields
   Mode return_mode_ = Mode::kChinese; // mode to return to from numbers / symbols
-  bool shift_ = false;               // letters mode: upper case
-  struct MultiTap {
-    char key = 0;
-    ULONGLONG tick = 0;
-    size_t index = 0;
-  } multitap_;
-  void TypeLetter(char key);
+  bool shift_ = false;               // QWERTY: upper case
+  bool caps_lock_ = false;           // QWERTY: shift stays on
+  ULONGLONG shift_tick_ = 0;         // last shift tap (double tap = caps lock)
   bool expanded_ = false;
   int symbol_category_ = 0;
   float candidate_scroll_ = 0, side_scroll_ = 0, grid_scroll_ = 0;

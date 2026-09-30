@@ -13,8 +13,10 @@
 
 namespace t9ime::panel {
 
+// Keys and background are vertical gradients (first color at the top).
 struct Theme {
   D2D1_COLOR_F background, key, function_key, pressed, text, subtext, accent, strip, candidate_pressed;
+  D2D1_COLOR_F background_bottom, key_bottom, function_key_bottom, shadow, function_text;
   static Theme Light();
   static Theme Dark();
 };
@@ -53,12 +55,17 @@ class PanelRenderer {
   IDWriteFactory* dwrite_ = nullptr;
   ID2D1HwndRenderTarget* target_ = nullptr;
   ID2D1SolidColorBrush* brush_ = nullptr;
+  // Recreated when the theme changes; start / end points are set per shape.
+  ID2D1LinearGradientBrush* Gradient(const D2D1_COLOR_F& top, const D2D1_COLOR_F& bottom, float y0, float y1);
+  ID2D1LinearGradientBrush* gradients_[3] = {};
+  D2D1_COLOR_F gradient_colors_[3][2] = {};
   IDWriteTextFormat* key_format_ = nullptr;
   IDWriteTextFormat* sub_format_ = nullptr;
   IDWriteTextFormat* function_format_ = nullptr;
   IDWriteTextFormat* candidate_format_ = nullptr;
   IDWriteTextFormat* side_format_ = nullptr;
   IDWriteTextFormat* strip_format_ = nullptr;
+  IDWriteTextFormat* preview_format_ = nullptr;
   std::wstring font_family_;
   bool color_fonts_ = false;
 };

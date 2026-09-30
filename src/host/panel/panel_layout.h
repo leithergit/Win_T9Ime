@@ -6,11 +6,19 @@
 //  | candidate bar ........................... [ v ]  |
 //  +--------+----------------------------+----------+
 //  | pinyin | 1 分词  | 2 ABC  | 3 DEF   |  ⌫       |
-//  |  bar   | 4 GHI   | 5 JKL  | 6 MNO   |  重输     |
-//  | (list) | 7 PQRS  | 8 TUV  | 9 WXYZ  |  空格 0   |
-//  +--------+---------+--------+---------+----------+
-//  |  符号  |  123    | 中/英  |  隐藏    |  回车     |
-//  +--------+---------+--------+---------+----------+
+//  |  bar   | 4 GHI   | 5 JKL  | 6 MNO   |  清空     |
+//  | (list) | 7 PQRS  | 8 TUV  | 9 WXYZ  |  符号     |
+//  +--------+------+---------------+-----+----------+
+//  |  隐藏  | 123  |    0 空格      |中/英 |  换行     |
+//  +--------+------+---------------+-----+----------+
+// (after the iFlytek iOS nine-key layout, Docs/T9.jpg)
+//
+// English (Docs/T9_ABC.jpg): a full QWERTY keyboard (letters go straight to the field; the small
+// character on each key is typed by a long press), also used for passwords:
+//  | q w e r t y u i o p |
+//  |  a s d f g h j k l  |
+//  | ⇧  z x c v b n m  ⌫ |
+//  | 符号 123 , ␣ . 英/中 隐藏 换行 |
 
 #include <functional>
 #include <string>
@@ -25,9 +33,7 @@ struct RectF {
   float Bottom() const { return y + h; }
 };
 
-// kLetters: multi-tap letters typed straight into the field (passwords and
-// other fields where Chinese composition or word prediction do not apply).
-enum class Mode { kChinese, kEnglish, kNumber, kSymbol, kLetters };
+enum class Mode { kChinese, kEnglish, kNumber, kSymbol };
 
 enum class Action {
   kNone,
@@ -47,8 +53,8 @@ enum class Action {
   kPinyin,        // `index` into the pinyin bar
   kSymbolCategory,  // `index` into the symbol categories
   kHandle,        // drag the window
-  kLetter,        // multi-tap letter key, `text` is the digit '1'..'9'
-  kShift,         // letters mode: upper / lower case
+  kLetter,        // QWERTY key: types `label`; long press types `text`
+  kShift,         // QWERTY: tap = next letter upper case, double tap = caps lock
 };
 
 // Scrollable regions; list items are clipped to their region.
@@ -78,7 +84,8 @@ struct LayoutInput {
   Mode mode = Mode::kChinese;
   bool composing = false;
   bool expanded = false;
-  bool shift = false;  // letters mode: upper case
+  bool shift = false;      // QWERTY: upper case letters
+  bool caps_lock = false;  // QWERTY: shift stays on
   std::wstring preedit;
   std::vector<std::wstring> candidates;  // whole list fetched so far
   int highlighted = 0;

@@ -165,6 +165,13 @@ class Panel:
                 return e
         raise AssertionError(f'element not found: action={action} text={text} label={label} index={index}')
 
+    def has(self, action, **kw) -> bool:
+        try:
+            self.find(action, **kw)
+            return True
+        except AssertionError:
+            return False
+
     def tap(self, action, **kw):
         e = self.find(action, **kw)
         before = self.read()['seq']
@@ -176,6 +183,10 @@ class Panel:
     def keys(self, digits: str):
         for d in digits:
             self.tap(KEY, text=d)
+
+    def letters(self, text: str):
+        for c in text:
+            self.tap(LETTER, label=c)
 
     def input(self) -> str:
         return self.read()['input']
@@ -248,15 +259,17 @@ def main() -> int:
         panel.tap(TEXT, label='，')  # quick punctuation in the side list
         check(window_text(edit) == '中国是zhonggu5，', f'numbers and punctuation (got {window_text(edit)!r})')
 
+        # English: QWERTY, letters typed directly; shift is one-shot.
         panel.tap(TOGGLE)
-        panel.keys('43556')
+        check(panel.has(LETTER, label='q') and not panel.has(KEY), 'english is a QWERTY keyboard')
+        panel.letters('hello')
         panel.tap(SPACE)
-        check(window_text(edit).endswith('hello '), f'english space commits word + space (got {window_text(edit)!r})')
-        panel.keys('9675')
-        panel.tap(KEY, text='1')  # finishes the word, then offers punctuation
-        panel.tap(CANDIDATE, label='.')
-        check(window_text(edit).endswith('hello work.'), f'english 1 key (got {window_text(edit)!r})')
+        panel.tap(SHIFT)
+        panel.letters('Work')
+        panel.tap(TEXT, label='.')
+        check(window_text(edit).endswith('hello Work.'), f'english QWERTY typing (got {window_text(edit)!r})')
         panel.tap(TOGGLE)
+        check(panel.has(KEY, text='2'), 'back to the Chinese nine-key layout')
 
         # Resize with the grip at the right end of the handle strip.
         before = panel.read()['window']

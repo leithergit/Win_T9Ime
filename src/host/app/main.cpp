@@ -3,7 +3,7 @@
 //
 //   T9Host.exe [--data <dir>] [--user <dir>] [--settings <ini>] [--show]
 //              [--input pointer|touch|mouse] [--dump-layout <file>] [--no-single-instance]
-//              [--pipe <request pipe name>]
+//              [--pipe <request pipe name>] [--theme light|dark]
 
 #include <windows.h>
 #include <sddl.h>
@@ -45,6 +45,7 @@ struct Args {
   bool single_instance = true;
   bool background = false;  // started by a TIP: never disturb a running host
   bool take_over_touch_keyboard = false;
+  int theme = -1;
 };
 
 std::wstring ExeDir() {
@@ -95,6 +96,7 @@ Args ParseArgs() {
     else if (k == L"--show") a.show = true;
     else if (k == L"--no-single-instance") a.single_instance = false;
     else if (k == L"--always-show") a.always_show = true;
+    else if (k == L"--theme") a.theme = next() == L"dark" ? 1 : 0;
     else if (k == L"--background") a.background = true;
     else if (k == L"--take-over-touch-keyboard") a.take_over_touch_keyboard = true;
     else if (k == L"--input") {
@@ -141,6 +143,7 @@ class HostApp {
     po.settings_file = args.settings;
     po.dump_layout = args.dump_layout;
     po.always_show = args.always_show;
+    po.theme = args.theme;
     if (!panel_->Create(instance, po)) return false;
 
     RimeEngine::Options eo;

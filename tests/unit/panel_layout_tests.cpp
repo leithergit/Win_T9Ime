@@ -103,19 +103,42 @@ TEST_CASE("number and symbol layouts") {
   CHECK(q->region == Region::kGrid);
 }
 
-TEST_CASE("letters layout for passwords") {
+TEST_CASE("english is a full QWERTY keyboard") {
   LayoutInput in;
   in.measure = Measure;
-  in.mode = Mode::kLetters;
+  in.mode = Mode::kEnglish;
+  in.side_items = {L","};  // ignored: no side list
   Layout l = BuildLayout(in);
-  const Element* two = Find(l, Action::kLetter, L"abc");
-  REQUIRE(two);
-  CHECK(two->text == "2");
+  int letters = 0;
+  for (const Element& e : l.elements) {
+    CHECK(e.rect.x >= 0);
+    CHECK(e.rect.Right() <= in.width + 0.01f);
+    CHECK(e.rect.Bottom() <= in.height + 0.01f);
+    CHECK(e.region == Region::kNone);
+    if (e.action == Action::kLetter) ++letters;
+  }
+  CHECK(letters == 26);
   CHECK(Find(l, Action::kKey) == nullptr);
-  CHECK(Find(l, Action::kShift) != nullptr);
-  CHECK(Find(l, Action::kBack) != nullptr);
+  const Element* q = Find(l, Action::kLetter, L"q");
+  const Element* a = Find(l, Action::kLetter, L"a");
+  const Element* z = Find(l, Action::kLetter, L"z");
+  REQUIRE(q);
+  REQUIRE(a);
+  REQUIRE(z);
+  CHECK(q->sublabel == L"1");
+  CHECK(q->text == "1");  // long press
+  CHECK(a->text == "~");
+  CHECK(q->rect.y < a->rect.y);
+  CHECK(a->rect.x > q->rect.x);  // staggered rows
+  CHECK(z->rect.x > a->rect.x);
+  for (Action act : {Action::kShift, Action::kBackspace, Action::kSpace, Action::kEnter, Action::kSymbols,
+                     Action::kNumbers, Action::kToggleLanguage, Action::kHide}) {
+    CHECK(Find(l, act) != nullptr);
+  }
+  CHECK(Find(l, Action::kText, L",") != nullptr);
+  CHECK(Find(l, Action::kText, L".") != nullptr);
   in.shift = true;
   Layout upper = BuildLayout(in);
-  CHECK(Find(upper, Action::kLetter, L"ABC") != nullptr);
+  CHECK(Find(upper, Action::kLetter, L"Q") != nullptr);
   CHECK(Find(upper, Action::kShift)->selected);
 }
