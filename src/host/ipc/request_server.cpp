@@ -35,94 +35,37 @@ Result ToResult(Session& s, bool eaten) {
 
 }  // namespace
 
-RequestServer::RequestServer(EngineThread& engine, std::wstring pipe_name)
-    : engine_(engine), name_(pipe_name.empty() ? PipeName(Endpoint::kRequest) : std::move(pipe_name)) {}
+RequestServer::RequestServer(EngineThread& engine, FocusRegistry& focus, std::wstring pipe_name)
+    : engine_(engine),
+      focus_(focus),
+      name_(pipe_name.empty() ? PipeName(Endpoint::kRequest) : std::move(pipe_name)) {}
 
-bool RequestServer::Start() {
-  HANDLE first = CreatePipeInstance(name_, true);
-  if (first == INVALID_HANDLE_VALUE) return false;
-  stop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-  listener_ = std::thread(&RequestServer::Listen, this, first);
-  return true;
-}
-
-void RequestServer::Stop() {
-  if (!stop_) return;
-  SetEvent(stop_);
-  if (listener_.joinable()) listener_.join();
-  {
-    std::lock_guard lock(mutex_);
-    for (Connection& c : connections_) CancelIoEx(c.pipe, nullptr);
-  }
-  for (Connection& c : connections_) {
-    if (c.thread.joinable()) c.thread.join();
-  }
-  connections_.clear();
-  CloseHandle(stop_);
-  stop_ = nullptr;
-}
-
-void RequestServer::ReapFinished() {
-  std::lock_guard lock(mutex_);
-  for (auto it = connections_.begin(); it != connections_.end();) {
-    if (it->done) {
-      it->thread.join();
-      it = connections_.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-void RequestServer::Listen(HANDLE pipe) {
-  HANDLE connected = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-  while (pipe != INVALID_HANDLE_VALUE) {
-    OVERLAPPED ov = {};
-    ov.hEvent = connected;
-    ResetEvent(connected);
-    bool ok = ConnectNamedPipe(pipe, &ov) != FALSE;
-    const DWORD err = ok ? 0 : GetLastError();
-    if (err == ERROR_IO_PENDING) {
-      HANDLE handles[2] = {connected, stop_};
-      if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) != WAIT_OBJECT_0) {
-        CancelIoEx(pipe, &ov);
-        DWORD dummy;
-        GetOverlappedResult(pipe, &ov, &dummy, TRUE);
-        CloseHandle(pipe);
-        break;
-      }
-      DWORD dummy;
-      ok = GetOverlappedResult(pipe, &ov, &dummy, FALSE) != FALSE;
-    } else {
-      ok = ok || err == ERROR_PIPE_CONNECTED;
-    }
-    if (ok) {
-      ReapFinished();
-      std::lock_guard lock(mutex_);
-      Connection& c = connections_.emplace_back();
-      c.pipe = pipe;
-      c.thread = std::thread(&RequestServer::Serve, this, &c, next_client_++);
-    } else {
-      CloseHandle(pipe);
-    }
-    if (WaitForSingleObject(stop_, 0) == WAIT_OBJECT_0) break;
-    pipe = CreatePipeInstance(name_, false);
-  }
-  CloseHandle(connected);
-}
-
-void RequestServer::Serve(Connection* c, uint64_t client) {
+void RequestServer::Serve(HANDLE pipe, uint64_t client, HANDLE stop) {
   std::vector<uint8_t> request;
-  while (ReadMessage(c->pipe, &request, INFINITE, stop_)) {
+  while (ReadMessage(pipe, &request, INFINITE, stop)) {
     const Reader reader(request.data(), request.size());
     if (!reader.ok()) break;
     const std::vector<uint8_t> response = Handle(reader, client);
-    if (!WriteMessage(c->pipe, response, 1000, stop_)) break;
+    if (!WriteMessage(pipe, response, 1000, stop)) break;
   }
+  focus_.Unregister(client);
   engine_.Invoke([client](EngineContext& ctx) { ctx.clients.erase(client); });
-  DisconnectNamedPipe(c->pipe);
-  CloseHandle(c->pipe);
-  c->done = true;
+}
+
+EventServer::EventServer(FocusRegistry& focus, std::wstring pipe_name)
+    : focus_(focus), name_(pipe_name.empty() ? PipeName(Endpoint::kEvents) : std::move(pipe_name)) {}
+
+void EventServer::Serve(HANDLE pipe, uint64_t, HANDLE stop) {
+  std::vector<uint8_t> msg;
+  if (!ReadMessage(pipe, &msg, 2000, stop)) return;
+  const Reader hello(msg.data(), msg.size());
+  if (!hello.ok() || hello.type() != MsgType::kEventHello) return;
+  const uint64_t client = hello.U32Or(kTagClient, 0);
+  focus_.SetEventPipe(client, pipe);
+  // The client never writes again; this read ends when it disconnects.
+  while (ReadMessage(pipe, &msg, INFINITE, stop)) {
+  }
+  focus_.ClearEventPipe(client, pipe);
 }
 
 std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
@@ -136,15 +79,28 @@ std::vector<uint8_t> RequestServer::Handle(const Reader& req, uint64_t client) {
     }
     bool eaten = false;
     switch (req.type()) {
-      case MsgType::kHello:
+      case MsgType::kHello: {
+        focus_.Register(client, req.U32Or(kTagPid, 0), req.U32Or(kTagTid, 0), req.StrOr(kTagExe));
+        Writer ack(MsgType::kAck, seq);
+        ack.U32(kTagClient, static_cast<uint32_t>(client));
+        out = ack.Finish();
+        return;
+      }
       case MsgType::kFocusIn:
+        focus_.FocusIn(client, reinterpret_cast<HWND>(static_cast<uintptr_t>(req.U32Or(kTagHwnd, 0))),
+                       req.U32s(kTagInputScope), req.BoolOr(kTagTouch, false), req.BoolOr(kTagReadOnly, false));
         out = Writer(MsgType::kAck, seq).Finish();
         return;
       case MsgType::kFocusOut:
         s->Clear();
+        focus_.FocusOut(client);
         out = Writer(MsgType::kAck, seq).Finish();
         return;
       case MsgType::kKey:
+        if (ctx.panel && ctx.panel->HasInput()) {
+          ctx.panel->Clear();
+          ctx.panel_changed = true;
+        }
         eaten = s->ProcessKey(static_cast<int>(req.U32Or(kTagKeycode, 0)),
                               static_cast<int>(req.U32Or(kTagMask, 0)));
         break;

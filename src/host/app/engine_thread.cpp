@@ -83,6 +83,7 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
   ctx.engine = &engine;
   {
     Session session(engine, schema);
+    ctx.panel = &session;
     // Windows 7 has no color emoji font: emoji candidates are disabled there.
     const bool emoji = compat::Os().AtLeastWin10();
     session.SetOption("emoji", emoji);
@@ -110,8 +111,10 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
         commands_.pop_front();
       }
       if (item.task) {
+        ctx.panel_changed = false;
         item.task(ctx);
         if (item.done) item.done->set_value();
+        if (ctx.panel_changed) publish({});
         continue;
       }
       std::vector<Passthrough> passthrough;
@@ -120,6 +123,7 @@ void EngineThread::Run(RimeEngine::Options options, std::string schema) {
       publish(std::move(passthrough));
     }
     ctx.clients.clear();
+    ctx.panel = nullptr;
   }
   engine.Finalize();
 }

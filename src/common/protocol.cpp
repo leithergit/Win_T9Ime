@@ -109,6 +109,14 @@ std::vector<std::wstring> Reader::Strs(uint16_t tag) const {
   return out;
 }
 
+std::vector<uint32_t> Reader::U32s(uint16_t tag) const {
+  std::vector<uint32_t> out;
+  for (const Field& f : fields_) {
+    if (f.tag == tag && f.size == 4) out.push_back(Get32(f.data));
+  }
+  return out;
+}
+
 std::vector<uint8_t> Result::Encode(uint32_t seq) const {
   Writer w(MsgType::kResult, seq);
   w.Bool(kTagEaten, eaten).Bool(kTagComposing, composing).Bool(kTagAsciiMode, ascii_mode);

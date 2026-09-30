@@ -7,6 +7,7 @@ add_library(T9Tip SHARED
   register.h register.cpp
   key_event.h key_event.cpp
   host_client.h host_client.cpp
+  event_listener.h event_listener.cpp
   edit_session.h
   display_attribute.h display_attribute.cpp
   candidate_ui.h candidate_ui.cpp

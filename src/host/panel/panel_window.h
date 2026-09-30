@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -41,6 +42,9 @@ class PanelWindow {
   void Show();
   void Hide();
   void Toggle() { visible() ? Hide() : Show(); }
+  // Text output: returns false when it could not be delivered (then the panel
+  // falls back to SendInput).
+  void SetDeliver(std::function<bool(const std::wstring&)> deliver) { deliver_ = std::move(deliver); }
   // Back to the default place: bottom center of the current monitor.
   void Dock();
   bool visible() const { return hwnd_ && IsWindowVisible(hwnd_); }
@@ -89,8 +93,12 @@ class PanelWindow {
   void LoadPlacement();
   void SavePlacement();
 
+  void Output(const std::wstring& text);
+
   EngineThread& engine_;
   PanelOptions options_;
+  std::function<bool(const std::wstring&)> deliver_;
+  unsigned pushed_ = 0, sent_ = 0;  // delivery statistics (test hook)
   HWND hwnd_ = nullptr;
   UINT dpi_ = 96;
   PanelRenderer renderer_;

@@ -13,6 +13,8 @@ namespace t9ime::tip {
 namespace {
 
 constexpr DWORD kCmodeNative = 0x0001;  // IME_CMODE_NATIVE
+constexpr UINT kPushMessage = WM_APP + 1;
+constexpr wchar_t kMessageClass[] = L"T9Ime.TipEvents";
 
 template <typename T>
 ComPtr<T> Query(IUnknown* p) {
@@ -91,6 +93,17 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
     window_.SetCallbacks([this](int index) { SelectCandidate(index); }, [this](bool backward) { ChangePage(backward); });
     lang_bar_.Attach(new LangBarButton([this] { SetAsciiModeInHost(!ascii_mode_); }));
 
+    WNDCLASSEXW wc = {sizeof(wc)};
+    if (!GetClassInfoExW(g_module, kMessageClass, &wc)) {
+      wc = {sizeof(wc)};
+      wc.lpfnWndProc = MessageWndProc;
+      wc.hInstance = g_module;
+      wc.lpszClassName = kMessageClass;
+      RegisterClassExW(&wc);
+    }
+    message_window_ = CreateWindowExW(0, kMessageClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_module, nullptr);
+    if (message_window_) SetWindowLongPtrW(message_window_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+
     if (!AdviseSinks()) {
       Deactivate();
       return E_FAIL;
@@ -103,7 +116,10 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
       cat->RegisterGUID(kGuidDisplayAttributeInput, &display_atom_);
     }
     ComPtr<ITfDocumentMgr> focus;
-    if (SUCCEEDED(thread_mgr_->GetFocus(&focus)) && focus) AdviseLayoutSink(focus.Get());
+    if (SUCCEEDED(thread_mgr_->GetFocus(&focus)) && focus) {
+      AdviseLayoutSink(focus.Get());
+      ReportFocus(focus.Get());
+    }
 
     DWORD open = 0;
     if (!GetCompartment(GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, &open) || !open) {
@@ -117,6 +133,13 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* mgr, TfClientId id, DWORD fla
 STDMETHODIMP TextService::Deactivate() {
   return Guard([&]() -> HRESULT {
     Abort();
+    host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
+    events_.Stop();
+    if (message_window_) {
+      SetWindowLongPtrW(message_window_, GWLP_USERDATA, 0);
+      DestroyWindow(message_window_);
+      message_window_ = nullptr;
+    }
     window_.Destroy();
     UnadviseSinks();
     UnadviseLayoutSink();
@@ -193,6 +216,7 @@ STDMETHODIMP TextService::OnSetFocus(ITfDocumentMgr* focus, ITfDocumentMgr* prev
   return Guard([&] {
     if (focus != previous) Abort();
     AdviseLayoutSink(focus);
+    ReportFocus(focus);
     return S_OK;
   });
 }
@@ -207,6 +231,8 @@ STDMETHODIMP TextService::OnSetFocus(BOOL foreground) {
 STDMETHODIMP TextService::OnSetThreadFocus() {
   return Guard([&] {
     if (auto r = host_.Call(ipc::Writer(ipc::MsgType::kQueryState))) SyncAsciiMode(r->ascii_mode);
+    ComPtr<ITfDocumentMgr> focus;
+    if (thread_mgr_ && SUCCEEDED(thread_mgr_->GetFocus(&focus))) ReportFocus(focus.Get());
     return S_OK;
   });
 }
@@ -214,6 +240,7 @@ STDMETHODIMP TextService::OnSetThreadFocus() {
 STDMETHODIMP TextService::OnKillThreadFocus() {
   return Guard([&] {
     Abort();
+    ReportFocus(nullptr);
     return S_OK;
   });
 }
@@ -284,6 +311,7 @@ HRESULT TextService::HandleKey(ITfContext* context, WPARAM vk, LPARAM lp, bool u
   ipc::Writer req(ipc::MsgType::kKey);
   req.U32(ipc::kTagKeycode, ke.keycode).U32(ipc::kTagMask, ke.mask).Bool(ipc::kTagTest, test);
   auto result = host_.Call(std::move(req));
+  EnsureEvents();
   if (!result) return S_OK;  // host unavailable: the key goes to the application
   *eaten = result->eaten;
   if (test) pending_ = {true, vk, up, *eaten};
@@ -423,7 +451,7 @@ STDMETHODIMP TextService::OnCompositionTerminated(TfEditCookie, ITfComposition* 
 
 void TextService::Abort() {
   if (state_.composing || composition_) {
-    host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut));
+    host_.Call(ipc::Writer(ipc::MsgType::kClearComposition), HostClient::kKeyTimeoutMs);
     state_.composing = false;
   }
   if (composition_ && active_context_) {
@@ -435,6 +463,71 @@ void TextService::Abort() {
     });
   }
   HideCandidates();
+}
+
+// ---------------------------------------------------------------------------
+// Host pushes and focus reports
+
+ITfContext* TextService::FocusedContext(ComPtr<ITfContext>* holder) {
+  ComPtr<ITfDocumentMgr> doc;
+  if (!thread_mgr_ || FAILED(thread_mgr_->GetFocus(&doc)) || !doc) return nullptr;
+  if (FAILED(doc->GetTop(holder->ReleaseAndGetAddressOf()))) return nullptr;
+  return holder->Get();
+}
+
+// Tells the host which field of this thread has the focus (nullptr: none), so
+// panel output can be pushed here. Also (re)attaches the events pipe.
+void TextService::ReportFocus(ITfDocumentMgr* doc) {
+  ComPtr<ITfContext> top;
+  if (!doc || FAILED(doc->GetTop(&top)) || !top) {
+    host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
+    EnsureEvents();
+    return;
+  }
+  HWND hwnd = nullptr;
+  ComPtr<ITfContextView> view;
+  if (SUCCEEDED(top->GetActiveView(&view)) && view) view->GetWnd(&hwnd);
+  ipc::Writer req(ipc::MsgType::kFocusIn);
+  req.U32(ipc::kTagTid, GetCurrentThreadId());
+  req.U32(ipc::kTagHwnd, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(hwnd)));
+  host_.Notify(std::move(req), HostClient::kKeyTimeoutMs);
+  EnsureEvents();
+}
+
+void TextService::EnsureEvents() {
+  if (!message_window_ || host_.generation() == events_generation_ || !host_.client_id()) return;
+  events_generation_ = host_.generation();
+  events_.Start(host_.client_id(), message_window_, kPushMessage);
+}
+
+LRESULT CALLBACK TextService::MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == kPushMessage) {
+    if (auto* self = reinterpret_cast<TextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+      Guard([&] {
+        self->OnPushes();
+        return S_OK;
+      });
+    }
+    return 0;
+  }
+  return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+// Touch panel output: commit into the focused field. A physical-keyboard
+// composition in progress is replaced (and dropped in the host).
+void TextService::OnPushes() {
+  for (std::wstring& text : events_.Take()) {
+    ComPtr<ITfContext> holder;
+    ITfContext* context = FocusedContext(&holder);
+    if (!context || text.empty()) continue;
+    if (state_.composing || composition_) {
+      host_.Call(ipc::Writer(ipc::MsgType::kClearComposition), HostClient::kKeyTimeoutMs);
+    }
+    ipc::Result r;
+    r.commit = std::move(text);
+    r.ascii_mode = ascii_mode_;
+    Apply(context, r, true);
+  }
 }
 
 // ---------------------------------------------------------------------------

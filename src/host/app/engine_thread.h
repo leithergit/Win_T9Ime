@@ -33,6 +33,8 @@ struct EngineSnapshot {
 // State owned by the engine thread, reachable from Invoke().
 struct EngineContext {
   RimeEngine* engine = nullptr;  // null if initialization failed
+  Session* panel = nullptr;      // the touch panel's session
+  bool panel_changed = false;    // set by tasks that modify `panel`: a snapshot is published
   // Physical-keyboard sessions (rime_ice), one per TIP connection.
   std::map<uint64_t, std::unique_ptr<Session>> clients;
   Session* Client(uint64_t id);

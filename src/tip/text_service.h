@@ -13,6 +13,7 @@
 
 #include "candidate_ui.h"
 #include "candidate_window.h"
+#include "event_listener.h"
 #include "host_client.h"
 #include "key_event.h"
 #include "lang_bar.h"
@@ -101,6 +102,13 @@ class TextService final : public ITfTextInputProcessorEx,
   void SelectCandidate(int index);
   void ChangePage(bool backward);
 
+  // Host pushes (touch panel) and focus reports
+  static LRESULT CALLBACK MessageWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+  void EnsureEvents();
+  void OnPushes();
+  void ReportFocus(ITfDocumentMgr* doc);
+  ITfContext* FocusedContext(Microsoft::WRL::ComPtr<ITfContext>* holder);
+
   // Sinks
   bool AdviseSinks();
   void UnadviseSinks();
@@ -147,6 +155,10 @@ class TextService final : public ITfTextInputProcessorEx,
   bool has_rect_ = false;
 
   Microsoft::WRL::ComPtr<LangBarButton> lang_bar_;
+
+  HWND message_window_ = nullptr;  // message-only, on this thread
+  EventListener events_;
+  uint32_t events_generation_ = 0;
 };
 
 }  // namespace t9ime::tip

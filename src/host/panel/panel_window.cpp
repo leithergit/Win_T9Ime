@@ -530,9 +530,9 @@ void PanelWindow::OnEngineSnapshots() {
   if (snapshots.empty()) return;
   const std::string old_input = snapshot_.state.input;
   for (EngineSnapshot& snap : snapshots) {
-    if (!snap.state.commit.empty()) SendText(Utf8ToWide(snap.state.commit));
+    if (!snap.state.commit.empty()) Output(Utf8ToWide(snap.state.commit));
     for (const Passthrough& p : snap.passthrough) {
-      if (p.vk) SendVirtualKey(p.vk); else SendText(p.text);
+      if (p.vk) SendVirtualKey(p.vk); else Output(p.text);
     }
   }
   snapshot_ = std::move(snapshots.back());
@@ -542,6 +542,18 @@ void PanelWindow::OnEngineSnapshots() {
   }
   Relayout();
   InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+// Through the focused TIP (TSF edit session) when possible; SendInput otherwise
+// (applications without TSF, or before the IME is active in the target).
+void PanelWindow::Output(const std::wstring& text) {
+  if (text.empty()) return;
+  if (deliver_ && deliver_(text)) {
+    ++pushed_;
+    return;
+  }
+  ++sent_;
+  SendText(text);
 }
 
 std::vector<std::wstring> PanelWindow::SideItems() const {
@@ -622,6 +634,7 @@ void PanelWindow::DumpLayout() {
   RECT wr;
   GetWindowRect(hwnd_, &wr);
   std::string json = "{\"seq\":" + std::to_string(++seq) + ",\"visible\":" + (visible() ? "true" : "false") +
+                     ",\"pushed\":" + std::to_string(pushed_) + ",\"sent\":" + std::to_string(sent_) +
                      ",\"input\":\"" + JsonEscape(snapshot_.state.input) + "\",\"window\":[" +
                      std::to_string(wr.left) + "," + std::to_string(wr.top) + "," +
                      std::to_string(wr.right) + "," + std::to_string(wr.bottom) + "],\"elements\":[";

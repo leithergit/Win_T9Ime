@@ -135,8 +135,12 @@ class HostApp {
     engine_.Start(eo, "t9", panel_->hwnd(), panel::PanelWindow::kEngineMessage);
     // Physical-keyboard requests from the TIP. Failure means another host owns
     // the pipe (e.g. a test instance); the panel still works.
-    server_ = std::make_unique<ipc::RequestServer>(engine_, args.pipe_name);
+    server_ = std::make_unique<ipc::RequestServer>(engine_, focus_, args.pipe_name);
     if (!server_->Start()) server_.reset();
+    events_ = std::make_unique<ipc::EventServer>(focus_, args.pipe_name.empty() ? L"" : args.pipe_name + L".evt");
+    if (!events_->Start()) events_.reset();
+    // Panel output goes to the focused TIP when there is one.
+    panel_->SetDeliver([this](const std::wstring& text) { return focus_.PushCommit(text); });
 
     AddTrayIcon();
     if (args.show) panel_->Show();
@@ -146,6 +150,7 @@ class HostApp {
   void Shutdown() {
     RemoveTrayIcon();
     server_.reset();  // before the engine: connection threads call into it
+    events_.reset();
     engine_.Stop();
     panel_.reset();
     if (hwnd_) DestroyWindow(hwnd_);
@@ -216,7 +221,9 @@ class HostApp {
 
   HWND hwnd_ = nullptr;
   EngineThread engine_;
+  ipc::FocusRegistry focus_;
   std::unique_ptr<ipc::RequestServer> server_;
+  std::unique_ptr<ipc::EventServer> events_;
   std::unique_ptr<panel::PanelWindow> panel_;
 };
 

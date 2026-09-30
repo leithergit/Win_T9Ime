@@ -22,6 +22,10 @@ class HostClient {
   // Request answered by kAck.
   bool Notify(ipc::Writer request, DWORD timeout_ms = kOtherTimeoutMs);
   void Disconnect() { pipe_.Close(); }
+  // Identity assigned by the host for the current connection; changes on
+  // every reconnect (the events pipe must then be re-attached).
+  uint32_t client_id() const { return client_id_; }
+  uint32_t generation() const { return generation_; }
 
  private:
   bool EnsureConnected();
@@ -32,6 +36,8 @@ class HostClient {
   ULONGLONG next_attempt_ = 0;   // no connection attempts before this tick
   ULONGLONG next_launch_ = 0;    // no host launch before this tick
   DWORD backoff_ms_ = 500;
+  uint32_t client_id_ = 0;
+  uint32_t generation_ = 0;
 };
 
 }  // namespace t9ime::tip

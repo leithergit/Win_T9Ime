@@ -149,6 +149,20 @@ bool PipeClient::Call(const std::vector<uint8_t>& request, std::vector<uint8_t>*
   return true;
 }
 
+bool PipeClient::Send(const std::vector<uint8_t>& message, DWORD timeout_ms) {
+  if (!connected()) return false;
+  if (WriteMessage(pipe_, message, timeout_ms)) return true;
+  Close();
+  return false;
+}
+
+bool PipeClient::Receive(std::vector<uint8_t>* message, DWORD timeout_ms, HANDLE stop) {
+  if (!connected()) return false;
+  if (ReadMessage(pipe_, message, timeout_ms, stop)) return true;
+  Close();
+  return false;
+}
+
 void PipeClient::Close() {
   if (pipe_ != INVALID_HANDLE_VALUE) {
     CloseHandle(pipe_);

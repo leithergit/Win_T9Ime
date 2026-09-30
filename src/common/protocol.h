@@ -32,6 +32,10 @@ enum class MsgType : uint16_t {
   kClearComposition = 7,
   kQueryState = 8,     // current state without input
   kSetAsciiMode = 9,   // value (IMM32 conversion mode / langbar)
+  // TIP -> Host on the events pipe, once after connecting (-> no answer)
+  kEventHello = 20,    // client (id from the kHello ack)
+  // Host -> TIP on the events pipe
+  kPushCommit = 110,   // commit (text from the touch panel)
   // Host -> TIP
   kResult = 100,
   kAck = 101,
@@ -50,6 +54,11 @@ enum Tag : uint16_t {
   kTagIndex = 8,
   kTagBackward = 9,
   kTagValue = 10,
+  kTagClient = 11,       // client id (kHello ack, kEventHello)
+  kTagHwnd = 12,         // focus window (low 32 bits suffice for HWNDs)
+  kTagInputScope = 13,   // repeated
+  kTagTouch = 14,        // focus change caused by touch / pen
+  kTagReadOnly = 15,
   // result fields
   kTagEaten = 30,
   kTagCommit = 31,
@@ -106,6 +115,7 @@ class Reader {
   std::wstring StrOr(uint16_t tag) const { return Str(tag).value_or(std::wstring()); }
   // All string values of a repeated tag, in order.
   std::vector<std::wstring> Strs(uint16_t tag) const;
+  std::vector<uint32_t> U32s(uint16_t tag) const;
 
  private:
   std::vector<Field> fields_;

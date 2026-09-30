@@ -40,6 +40,9 @@ class PipeClient {
   // Sends a request and waits for the response. Closes the connection on any
   // failure so the next call reconnects.
   bool Call(const std::vector<uint8_t>& request, std::vector<uint8_t>* response, DWORD timeout_ms);
+  // One-way messages (events pipe). Close the connection on failure.
+  bool Send(const std::vector<uint8_t>& message, DWORD timeout_ms);
+  bool Receive(std::vector<uint8_t>* message, DWORD timeout_ms, HANDLE stop = nullptr);
   void Close();
   bool connected() const { return pipe_ != INVALID_HANDLE_VALUE; }
 

@@ -61,7 +61,11 @@ bool HostClient::EnsureConnected() {
     hello.U32(ipc::kTagPid, GetCurrentProcessId()).U32(ipc::kTagTid, GetCurrentThreadId());
     hello.Str(ipc::kTagExe, std::wstring_view(exe, n));
     std::vector<uint8_t> resp;
-    if (pipe_.Call(hello.Finish(), &resp, kOtherTimeoutMs)) return true;
+    if (pipe_.Call(hello.Finish(), &resp, kOtherTimeoutMs)) {
+      client_id_ = ipc::Reader(resp.data(), resp.size()).U32Or(ipc::kTagClient, 0);
+      ++generation_;
+      return true;
+    }
   }
   next_attempt_ = now + backoff_ms_;
   backoff_ms_ = std::min(backoff_ms_ * 2, kMaxBackoffMs);

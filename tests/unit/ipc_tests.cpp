@@ -99,9 +99,10 @@ TEST_CASE("request server: physical keyboard sessions over the pipe") {
   engine.Start(opt, "t9", nullptr, 0);
 
   const std::wstring name = L"\\\\.\\pipe\\T9Ime.test." + std::to_wstring(GetCurrentProcessId());
-  RequestServer server(engine, name);
+  FocusRegistry focus;
+  RequestServer server(engine, focus, name);
   REQUIRE(server.Start());
-  RequestServer second(engine, name);
+  RequestServer second(engine, focus, name);
   CHECK_FALSE(second.Start());  // FILE_FLAG_FIRST_PIPE_INSTANCE
 
   PipeClient a, b;
