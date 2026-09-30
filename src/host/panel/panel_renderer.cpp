@@ -175,6 +175,12 @@ void PanelRenderer::Render(HWND hwnd, UINT dpi, const Layout& layout, const Them
         target_->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(cx - 18, cy - 2, cx + 18, cy + 2), 2, 2),
                                       brush_);
         DrawText(e.label, strip_format_, D2D1::RectF(rect.left + 8, rect.top, cx - 24, rect.bottom), theme.text);
+        // Resize grip: three diagonal strokes in the top-right corner.
+        const float gx = rect.right - 8, gy = rect.top + 5;
+        for (int i = 1; i <= 3; ++i) {
+          const float d = 4.f * i;
+          target_->DrawLine(D2D1::Point2F(gx - d, gy), D2D1::Point2F(gx, gy + d), brush_, 1.2f);
+        }
         break;
       }
       case Action::kCandidate:

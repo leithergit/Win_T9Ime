@@ -102,6 +102,7 @@ struct Metrics {
   static constexpr float kSideItem = 40;
   static constexpr float kGridCell = 48;
   static constexpr float kGap = 3;
+  static constexpr float kResizeGrip = 36;  // right end of the handle strip
 };
 
 Layout BuildLayout(const LayoutInput& in);

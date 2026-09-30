@@ -57,6 +57,25 @@ def click(x: int, y: int) -> None:
         time.sleep(0.03)
 
 
+def drag(x0: int, y0: int, x1: int, y1: int, steps: int = 8) -> None:
+    vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
+    vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)
+    base = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+
+    def send(x, y, flags):
+        inp = INPUT(type=INPUT_MOUSE)
+        inp.mi = MOUSEINPUT(int((x - vx) * 65535 / (vw - 1)), int((y - vy) * 65535 / (vh - 1)), 0,
+                            base | flags, 0, 0)
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        time.sleep(0.03)
+
+    send(x0, y0, MOUSEEVENTF_MOVE)
+    send(x0, y0, MOUSEEVENTF_LEFTDOWN)
+    for i in range(1, steps + 1):
+        send(x0 + (x1 - x0) * i // steps, y0 + (y1 - y0) * i // steps, MOUSEEVENTF_MOVE)
+    send(x1, y1, MOUSEEVENTF_LEFTUP)
+
+
 def window_text(hwnd) -> str:
     n = user32.SendMessageW(hwnd, WM_GETTEXTLENGTH, 0, 0)
     buf = ctypes.create_unicode_buffer(n + 1)
@@ -177,8 +196,21 @@ def main() -> int:
         panel.tap(TOGGLE)
         panel.keys('43556')
         panel.tap(SPACE)
+        check(window_text(edit).endswith('hello '), f'english space commits word + space (got {window_text(edit)!r})')
+        panel.keys('9675')
+        panel.tap(KEY, text='1')  # finishes the word, then offers punctuation
+        panel.tap(CANDIDATE, label='.')
+        check(window_text(edit).endswith('hello work.'), f'english 1 key (got {window_text(edit)!r})')
         panel.tap(TOGGLE)
-        check(window_text(edit).endswith('hello'), f'english nine-key (got {window_text(edit)!r})')
+
+        # Resize with the grip at the right end of the handle strip.
+        before = panel.read()['window']
+        handle = panel.find(16)  # kHandle
+        gx, gy = before[2] - 8, handle['y']
+        drag(gx, gy, gx + 60, gy - 40)
+        after = wait_for(lambda: (lambda w: w if w != before else None)(panel.read()['window']), what='resize')
+        check(after[2] - after[0] > before[2] - before[0] and after[3] - after[1] > before[3] - before[1]
+              and after[3] == before[3], f'grip resizes the panel ({before} -> {after})')
 
         check(user32.GetForegroundWindow() == hwnd, 'target is still in the foreground at the end')
     finally:

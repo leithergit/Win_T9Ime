@@ -22,6 +22,7 @@ constexpr float kScrollSlop = 8;    // DIPs before a press on a list turns into 
 constexpr float kKeySlop = 12;      // DIPs a finger may slide off a key and still tap it
 constexpr float kSwipeClear = 40;   // DIPs to the left on BackSpace clears the input
 constexpr UINT32 kMousePointer = 0xFFFF0001;
+constexpr float kMinWidth = 280, kMaxWidth = 1200, kMinHeight = 220, kMaxHeight = 800;  // DIPs
 
 const std::vector<std::wstring> kChinesePunct = {L"，", L"。", L"？", L"！", L"、", L"：",
                                                  L"；", L"……", L"～", L"“", L"”"};
@@ -285,6 +286,7 @@ void PanelWindow::PointerDown(UINT32 id, POINT screen) {
   t.y0 = t.ly = y;
   t.screen0 = screen;
   GetWindowRect(hwnd_, &t.window0);
+  t.resizing = t.action == Action::kHandle && x >= layout_.handle.Right() - Metrics::kResizeGrip;
   tracks_[id] = t;
   if (t.action == Action::kBackspace || t.action == Action::kKey || t.action == Action::kSpace) {
     long_press_id_ = id;
@@ -297,6 +299,19 @@ void PanelWindow::PointerMove(UINT32 id, POINT screen) {
   auto it = tracks_.find(id);
   if (it == tracks_.end()) return;
   Track& t = it->second;
+  if (t.action == Action::kHandle && t.resizing) {
+    // Top-right grip: width follows x, height grows upwards (bottom edge stays).
+    const float scale = Scale();
+    const int w0 = t.window0.right - t.window0.left, h0 = t.window0.bottom - t.window0.top;
+    const int w = std::clamp(w0 + static_cast<int>(screen.x - t.screen0.x), static_cast<int>(kMinWidth * scale),
+                             static_cast<int>(kMaxWidth * scale));
+    const int h = std::clamp(h0 - static_cast<int>(screen.y - t.screen0.y), static_cast<int>(kMinHeight * scale),
+                             static_cast<int>(kMaxHeight * scale));
+    width_dip_ = w / scale;
+    height_dip_ = h / scale;
+    SetWindowPos(hwnd_, nullptr, t.window0.left, t.window0.bottom - h, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    return;
+  }
   if (t.action == Action::kHandle) {
     SetWindowPos(hwnd_, nullptr, t.window0.left + screen.x - t.screen0.x,
                  t.window0.top + screen.y - t.screen0.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -404,7 +419,15 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
   switch (action) {
     case Action::kKey: {
       const char key = text.empty() ? 0 : text[0];
-      engine_.Post([key](Session& s, std::vector<Passthrough>&) { s.Key(key); });
+      const bool english = mode_ == Mode::kEnglish;
+      engine_.Post([key, english](Session& s, std::vector<Passthrough>&) {
+        // English: 1 (punctuation) finishes the word being typed first.
+        const std::string input = s.Input();
+        if (english && key == '1' && !input.empty() && input.back() >= '2' && input.back() <= '9') {
+          s.Space();
+        }
+        s.Key(key);
+      });
       break;
     }
     case Action::kText:
@@ -421,11 +444,18 @@ void PanelWindow::Execute(Action action, int index, const std::string& text, con
     case Action::kClear:
       engine_.Post([](Session& s, std::vector<Passthrough>&) { s.Escape(); });
       break;
-    case Action::kSpace:
-      engine_.Post([](Session& s, std::vector<Passthrough>& out) {
-        if (s.HasInput()) s.Space(); else out.push_back({0, L" "});
+    case Action::kSpace: {
+      const bool english = mode_ == Mode::kEnglish;
+      engine_.Post([english](Session& s, std::vector<Passthrough>& out) {
+        if (!s.HasInput()) {
+          out.push_back({0, L" "});
+          return;
+        }
+        s.Space();
+        if (english) out.push_back({0, L" "});  // word + space, like other T9 keyboards
       });
       break;
+    }
     case Action::kEnter:
       engine_.Post([](Session& s, std::vector<Passthrough>& out) {
         if (s.HasInput()) s.Enter(); else out.push_back({VK_RETURN, {}});
@@ -641,8 +671,8 @@ void PanelWindow::LoadPlacement() {
   const int y = GetPrivateProfileIntW(L"panel", L"y", INT_MIN, file);
   width_dip_ = static_cast<float>(GetPrivateProfileIntW(L"panel", L"width", 400, file));
   height_dip_ = static_cast<float>(GetPrivateProfileIntW(L"panel", L"height", 300, file));
-  width_dip_ = std::clamp(width_dip_, 280.f, 1200.f);
-  height_dip_ = std::clamp(height_dip_, 220.f, 800.f);
+  width_dip_ = std::clamp(width_dip_, kMinWidth, kMaxWidth);
+  height_dip_ = std::clamp(height_dip_, kMinHeight, kMaxHeight);
   if (x == INT_MIN || y == INT_MIN) {
     PlaceDefault();
     return;

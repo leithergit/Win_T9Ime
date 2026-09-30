@@ -87,6 +87,7 @@ class Session {
   bool SelectOnPage(size_t index);
   bool ChangePage(bool backward);
 
+  std::string Input() const;
   bool HasInput() const { return !Input().empty(); }
 
   // Raw X11 keysym (physical keyboard path).
@@ -98,7 +99,6 @@ class Session {
 
  private:
   bool NineKey() const;
-  std::string Input() const;
   void SetInput(const std::string& input);
   void CollectCommit();
 

@@ -3,7 +3,7 @@
 新会话先读本文件和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M1（引擎原型）已完成，Win7 真机测试包已交付待回收。下一步：M2 Host 与面板。
+M2（Host 与触屏面板，SendInput 上屏）已完成，M1/M2 真机测试包待同事回收。下一步：M3 TIP 骨架。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -17,10 +17,11 @@ M1（引擎原型）已完成，Win7 真机测试包已交付待回收。下一�
 - 一键：`pwsh -File build.ps1 -Preset x64-Release`（进入 VS2022 开发环境 → cmake 配置 → 构建 → ctest）；`-NoTest` 跳过测试，`-Fetch` 重新下载依赖。预设：`x64/x86-Debug/Release`，产物在 `out/build/<preset>/`。
 - 从 Bash 调用时用 `pwsh -NoProfile -File build.ps1 ... > log 2>&1` 再 grep，直接在 PowerShell 工具里跑会因 throw 丢输出。
 - 依赖：`third_party/fetch_librime.ps1`（librime 1.17.0 x64/x86 + opencc，SHA-256 校验）、`data/fetch_rime_ice.ps1`（rime-ice 固定 commit）。两者产物不入库。
-- Rime 数据：构建目标 `rime_data` 运行 `tools/prepare_data.py` → `out/build/<preset>/data`（首次约 45 s，有 stamp 缓存）。
-- 测试：`unit`（doctest）、`regress_*`（`tests/regress/*.t9` 经 t9repl 与 `.expected` 快照比对；改动后用 `run_regress.py --update` 重写并审阅 diff）、`win7_imports`（`tools/check_imports` 检查 Win7 不存在的静态导入）。
+- 产物布局与安装目录一致：`out/build/<preset>/bin/{T9Host.exe,t9repl.exe,rime.dll,data/}`。Rime 数据由构建目标 `rime_data`（`tools/prepare_data.py`）生成到 `bin/data`（首次约 45 s，有 stamp 缓存）。
+- 测试：默认 `ctest -LE e2e`；`e2e_panel`（`tests/e2e/panel_e2e.py`，用真实鼠标点面板往 test_target 输入，会移动光标，需要交互桌面）用 `ctest -L e2e` 单独跑。其余：`unit`（doctest）、`regress_*`（`tests/regress/*.t9` 经 t9repl 与 `.expected` 快照比对；改动后用 `run_regress.py --update` 重写并审阅 diff）、`win7_imports`（`tools/check_imports` 检查 Win7 不存在的静态导入）。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
-- 引擎调试：`out/build/x64-Release/tools/t9repl/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
+- T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance`。
+- 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
 
 ## 编码规范
 - TIP：除系统 DLL 外零依赖；禁止 boost/.NET/Qt/C++WinRT；所有 COM 方法 `noexcept` 且内部 try/catch；不在宿主进程做耗时操作、不弹 MessageBox、不 ShellExecute。
@@ -37,4 +38,8 @@ M1（引擎原型）已完成，Win7 真机测试包已交付待回收。下一�
 - rime-ice 不带 opencc s2t 数据，需从 rime-deps 包补。
 - Weasel 的 WeaselUI 静态导入 Shcore（Win8.1+），且开启了 OpenMP（vcomp140.dll）——都必须去掉/改动态加载。
 - Windows 大小写不敏感：文档目录是 `Docs/`。
+- 面板鼠标输入：先 `PointerUp` 再 `ReleaseCapture`——`ReleaseCapture` 触发的 `WM_CAPTURECHANGED` 会取消按下。
+- `Session::State()` 会取走待上屏文字，引擎线程命令里不要调用它（用 `Input()/HasInput()`）。
+- 面板的所有输出（上屏、退格/回车透传、直接符号）都经引擎线程的 Passthrough 排队，保证顺序；不要在 UI 线程直接 SendInput。
+- `_WIN32_WINNT=0x0601` 下 SDK 不声明 WM_POINTER/WM_DPICHANGED 等，常量在 `src/common/win_compat.h`。
 - 命令行输出中文用 `py -3 C:\Users\leith\.claude\tools\enc.py`，避免 cp936 乱码。

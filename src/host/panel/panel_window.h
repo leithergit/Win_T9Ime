@@ -58,6 +58,7 @@ class PanelWindow {
     bool long_fired = false;
     bool swipe_clear = false;
     bool inside = true;
+    bool resizing = false;  // handle strip grip: resize instead of move
   };
 
   static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);

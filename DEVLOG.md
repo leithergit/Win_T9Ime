@@ -56,16 +56,32 @@
 - 回收同事的 M1 真机结果。
 - M2：P2 探针（不激活窗口 + WM_TOUCH/WM_POINTER），T9Host 单实例 + 引擎线程 + 面板 + SendInput 上屏。
 
-## 2026-09-29 — M2 进行中（Host 与面板，SendInput 路径）
+## 2026-09-30 — M2 Host 与触屏面板（SendInput 路径）
 
 **完成**
 - `src/common/win_compat`：Win8+ API 动态加载（指针、DPI、触摸反馈）、RtlGetVersion、深色主题检测。
-- T9Host：单实例（Local\T9Ime.Host.<SID>）、引擎线程（命令队列 + 快照；Passthrough 保证上屏顺序）、托盘（显示/隐藏、停靠底部、退出）、PMv2 manifest（Win7 回退 System DPI）。
-- 面板：不激活窗口（MA_NOACTIVATE / PA_NOACTIVATE）、输入统一（WM_POINTER / WM_TOUCH / 鼠标，`--input` 可强制）、D2D + DWrite 渲染、中文/英文九键、数字、符号布局、拼音栏、候选栏横向滚动与展开网格、长按连删、左滑清空、长按数字键输入数字、拖动与位置保存、深浅色。
-- 测试：面板布局单元测试；`tests/e2e/panel_e2e.py` 用真实鼠标点击面板，把字输入测试窗口（x64/x86 全部 PASS，焦点始终不丢失）；`ctest -LE e2e` 为默认。
-- 测试包 `dist/M2/T9Ime-M2-test.zip`（含 panel.bat），本机 run.bat 通过。
+- T9Host：单实例（Local\T9Ime.Host.<SID>）、引擎线程（命令队列 + 快照 + Passthrough 保序）、托盘（显示/隐藏、停靠底部、退出）、PMv2 manifest（Win7 回退 System DPI）。
+- 面板：不激活窗口（MA_NOACTIVATE / PA_NOACTIVATE）；输入统一（WM_POINTER / WM_TOUCH / 鼠标，`--input` 可强制）；D2D + DWrite 渲染；中文/英文九键、数字、符号布局；拼音栏；候选栏横向滚动与展开网格；长按连删、左滑清空、长按数字键输入数字；拖动移动、角标调整大小并保存；深浅色。
+- 英文九键：1 键先上屏单词再出标点；空格上屏单词并补空格；preedit 显示单词。
+- 测试：面板布局单元测试；`tests/e2e/panel_e2e.py` 用真实鼠标点击面板往测试窗口输入（x64/x86 全部 PASS，焦点始终不丢失，含调整大小）。
+- 测试包 `dist/M2/T9Ime-M2-test.zip` + `Docs/testing/M2-checklist.md`（Win7 触屏真机）。
 
-**未完成（下一步）**
-- 编写 `Docs/testing/M2-checklist.md`（Win7 触摸真机：焦点不丢失、WM_TOUCH 与 `panel.bat mouse` 对比、长按/滑动/拖动）。
-- 面板尺寸调整、英文九键 1 键交互细节。
-- 更新 ARCHITECTURE/CLAUDE.md 中的 bin/ 目录布局说明，然后提交 M2。
+**决策**
+- 所有输出经引擎线程排队（Passthrough），避免快速点击时"上屏"与"透传"乱序。
+- 构建产物统一放 `bin/`，与安装目录布局一致。
+
+**已验证（开发机，鼠标）**
+- 不抢焦点、各布局输入、拼音栏、展开网格、调整大小；x86 与 x64。
+
+**未验证**
+- 真实触摸（Win7 WM_TOUCH 路径、Win10 WM_POINTER 触摸路径）——开发机无触屏，交同事按 M2 清单测试。
+- 管理员程序（SendInput 受 UIPI 限制，M4 改为 TIP 推送后仅剩非 TSF 管理员程序受影响）。
+
+**已知问题**
+- 托盘图标暂用系统默认图标（M6 替换）。
+- 面板拖动时不限制在屏幕内（下次启动或"停靠到屏幕底部"可找回）。
+- 🇨🇳 等国旗 emoji 在 Windows 上显示为字母（系统字体限制）。
+
+**下一步**
+- 回收 M1/M2 真机结果。
+- M3：P3 探针（GetTextExt 坐标、Win7 SDDL、AppContainer 管道）；Weasel fork 裁剪出 TIP、CMake 化、去 boost、新 IPC、注册注销、物理键盘全拼。
