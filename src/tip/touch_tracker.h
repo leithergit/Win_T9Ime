@@ -25,7 +25,9 @@ class TouchTracker {
   // posted to `notify` so the focus can be reported again.
   void Install(HWND notify, UINT message);
   void Uninstall();
-  bool FocusFromTouch() const;
+  // `focus`: the window that just got the keyboard focus. Touch only when
+  // the finger pressed that window (not a button that then focused it).
+  bool FocusFromTouch(HWND focus) const;
   // What the decision was based on (for t9diag).
   std::wstring Describe() const;
 

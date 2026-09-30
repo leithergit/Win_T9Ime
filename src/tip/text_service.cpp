@@ -600,7 +600,7 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
     focus_scopes_.clear();
     HWND focus = GetFocus();
     if (IsPasswordEdit(focus)) {
-      SendFocusIn(focus, {IS_PASSWORD}, touch_.FocusFromTouch(), false, touch_.Describe(), true);
+      SendFocusIn(focus, {IS_PASSWORD}, touch_.FocusFromTouch(focus), false, touch_.Describe(), true);
       return;
     }
     host_.Notify(ipc::Writer(ipc::MsgType::kFocusOut), HostClient::kKeyTimeoutMs);
@@ -608,11 +608,12 @@ void TextService::ReportFocus(ITfDocumentMgr* doc) {
     return;
   }
   // Computed now: it describes the input message being processed.
-  const bool touch = touch_.FocusFromTouch();
-  const std::wstring touch_debug = touch_.Describe();
   HWND hwnd = nullptr;
   ComPtr<ITfContextView> view;
   if (SUCCEEDED(top->GetActiveView(&view)) && view) view->GetWnd(&hwnd);
+  HWND focus = GetFocus();
+  const bool touch = touch_.FocusFromTouch(focus ? focus : hwnd);
+  const std::wstring touch_debug = touch_.Describe();
   TF_STATUS status = {};
   const bool read_only = SUCCEEDED(top->GetStatus(&status)) && (status.dwDynamicFlags & TS_SD_READONLY);
 

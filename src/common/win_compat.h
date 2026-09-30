@@ -8,6 +8,7 @@
 namespace t9ime::compat {
 
 // ---- Pointer input (Windows 8+) ----
+constexpr UINT kWmNcPointerDown = 0x0242;
 constexpr UINT kWmPointerUpdate = 0x0245;
 constexpr UINT kWmPointerDown = 0x0246;
 constexpr UINT kWmPointerUp = 0x0247;

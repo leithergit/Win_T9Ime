@@ -268,3 +268,10 @@
 - 原因：真实触屏在手指静止时也持续发送指针更新（约每 8 ms 一次，Win7 的 WM_TOUCH / 触摸转鼠标同样），每次 `PointerMove` 都 `InvalidateRect`；WM_TIMER 只在队列里没有输入消息和 WM_PAINT 时才生成，于是一直得不到处理。鼠标按住不动没有消息，所以正常。把注入的 UPDATE 间隔改为 8 ms 即可在开发机稳定复现（长按 q 输入 q；按住退格也不连发）。Win7 的"按住 = 右键"修正（7f91ae6）不是主因。
 - 修复（`panel_window.cpp`）：长按与退格连发记录到期时刻（`long_press_due_`、`repeat_due_`），WM_TIMER 仍然保留，同时每次指针更新检查到期即触发（`FireDue`），两者只会触发一次；坐标没变的更新不重绘。鼠标、WM_POINTER、WM_TOUCH 走同一路径。
 - 回归：新增 `e2e_touch`（`tests/e2e/touch_e2e.py`，InjectTouchInput，按住期间每 8 ms 一次 UPDATE）：长按 q 输入 1、按住退格连续删除。修复前两项都失败，修复后通过；鼠标长按仍正常。
+
+## 2026-09-30 — 问题 2–4：程序自己 SetFocus 回文本框被当成触摸聚焦
+
+- 取证（Win11 触屏真实手指，t9diag --watch）：手指点 TestHost（C++ / C#）的任何按钮后 0–16 ms 内都有一次焦点进入，`source=4`（GetCurrentInputMessageSource = 触摸）、`extra=ff5157xx`（触摸转鼠标）、`touch=1` → Host `show`，并按输入框重设布局。按钮处理函数最后 `SetFocus` 回文本框，此时正在处理的正是那次触摸产生的消息。于是"隐藏""切换"隐藏后立即又弹出，"数字""符号"被改回文本布局；切到 C# 窗口时 D1 先隐藏，随后 WinForms 激活时把焦点还给文本框又弹出。注入触摸同样复现（`touch_e2e` 在旧代码上 7 项失败）。
+- 修复（`src/tip/touch_tracker.*`、`TextService::ReportFocus`）：TouchTracker 记录最近一次按下的目标窗口（`WM_POINTERDOWN`、新增 `WM_NCPOINTERDOWN`（标题栏）、WH_MOUSE 的鼠标按下）。焦点进入时，若本线程最近看到过按下，只有按下的窗口是焦点窗口、在焦点窗口里面、或是包含焦点窗口的非顶层控件（组合框与其编辑框）才算触摸；按在按钮、标题栏、对话框背景上不算。本线程没看到按下时保持原判断（消息来源）。t9diag 的 touch 行显示 `on=<按下窗口类名>(focus)`。
+- 回归：`e2e_touch` 增加：手指点 TestHost 的"隐藏键盘""显示键盘""切换"×2、"数字""符号""英文"，断言显隐与布局保持 1.5 s 不被改回；手指点文本框本身仍弹出；C++ 显示键盘后手指点 C# 窗口标题栏 → 隐藏且不再弹出，C# 的"显示键盘""隐藏键盘"有效。修复前 7 项失败，修复后全过。x64 八项 e2e 全过；autoshow / tip 用 x86 test_target 也通过；x64、x86 单元测试全过。
+- 环境：本机（Win11）启用了 .NET Framework 3.5（重启后生效）以便用 v3.5 csc 构建 TestHost.CS.exe；重启前本地调试用的是 v4 csc 临时编译的版本（未入库）。

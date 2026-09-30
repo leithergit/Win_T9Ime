@@ -3,7 +3,7 @@
 新会话先读本文件、`Docs/STATUS.md`（进度与待解决问题）和 `DEVLOG.md`；需求见 `Docs/SPEC.md`，设计见 `Docs/ARCHITECTURE.md`，计划见 `Docs/PLAN.md`，调研结论见 `Docs/research/`。
 
 ## 当前状态
-M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；**触屏下有 4 个待解决问题（鼠标正常），见 `Docs/STATUS.md`**。下一步：M6 托盘、设置、词库。
+M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IME、系统触摸键盘共存、密码框英文全键盘、切换到 T9Ime 时弹出面板、讯飞风格布局）已完成，并已在 Win7 触屏虚拟机（ThinkPad 触屏直通）上由用户实测通过。M5（T9Ctl.dll / t9ctl.exe / TestHost C++·C#、控制管道、可见性通知、IMM32 兼容验证）功能完成，Win7 虚拟机上 7 项 e2e 全过；触屏下的 4 个问题已修复（注入触摸验证），待真实触屏复测，见 `Docs/STATUS.md`。下一步：M6 托盘、设置、词库。
 
 ## 关键决策（覆盖 SPEC，详见 ARCHITECTURE §0）
 - Weasel fork（上游 `rime/weasel@d73f629`），GPL-3.0。
@@ -20,10 +20,10 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - 产物布局与安装目录一致：`out/build/<preset>/bin/{T9Host.exe,t9repl.exe,rime.dll,data/}`。Rime 数据由构建目标 `rime_data`（`tools/prepare_data.py`）生成到 `bin/data`（首次约 45 s，有 stamp 缓存）。
 - 测试：默认 `ctest -LE e2e`；`e2e_panel`（`tests/e2e/panel_e2e.py`，用真实鼠标点面板往 test_target 输入，会移动光标，需要交互桌面）用 `ctest -L e2e` 单独跑。其余：`unit`（doctest）、`regress_*`（`tests/regress/*.t9` 经 t9repl 与 `.expected` 快照比对；改动后用 `run_regress.py --update` 重写并审阅 diff）、`win7_imports`（`tools/check_imports` 检查 Win7 不存在的静态导入）。
 - TIP 开发注册：`pwsh -File tools/dev_register.ps1 [-Unregister]`（会弹 UAC；注册 x64 与 x86 的 `out/build/*/bin/T9Tip.dll`）。注册后 DLL 被各应用加载而锁定，构建时 `tools/move_locked.py` 在链接前把旧 DLL 改名为 `.old-*`。
-- 端到端（`ctest -L e2e`，需已注册 TIP）：panel、tip、push、autoshow、switch、ctl、imm 七项。
+- 端到端（`ctest -L e2e`，需已注册 TIP）：panel、tip、push、autoshow、switch、ctl、imm、touch 八项。touch（`tests/e2e/touch_e2e.py`）用 InjectTouchInput 注入触摸：长按（按住期间每 8 ms 一次 UPDATE，模拟真实触屏）、手指点 TestHost 按钮；Win7 跳过。
 - TIP 端到端：`py -3 tests/e2e/tip_e2e.py --host <x64 bin>/T9Host.exe --target <x64|x86 bin>/test_target.exe`（`ctest -L e2e` 也会跑；未注册时跳过）。构建前先 `taskkill /im T9Host.exe /f`，否则 exe 被占用。
 - **Win7 虚拟机自动化**（VMware，`vmrun`，密码在 git 忽略的 `tests/vm_pass.txt`）：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` 打包后，`cd tools && py -3 vm_deploy.py`（注销旧版、拷入新包、注册、启动 Host），`py -3 vm_e2e.py [panel tip push autoshow switch]` 在虚拟机桌面跑端到端（Python 3.8 免安装版在 `C:	9test\py`）。`py -3 tools/vm.py cmd|shot|put|get|ps` 做单项操作。虚拟机里点击用窗口消息投递（`T9IME_CLICK=post`），因为 VMware 绝对指针会把光标拉回主机鼠标位置；键盘注入正常；Win7 无 InjectTouchInput，触摸项跳过。
-- 控制 API：`src/ctl`（T9Ctl.dll、t9ctl.exe；公开头文件 `src/ctl/t9ctl.h`），示例 `samples/TestHost`（C# 用 `%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe` 构建，只认反斜杠路径）。
+- 控制 API：`src/ctl`（T9Ctl.dll、t9ctl.exe；公开头文件 `src/ctl/t9ctl.h`），示例 `samples/TestHost`（C# 用 `%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe` 构建，只认反斜杠路径；Win10/11 需先启用 Windows 功能 .NET Framework 3.5（`dism /online /enable-feature /featurename:NetFx3 /all`，重启后生效），否则不生成 TestHost.CS.exe）。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
 - T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance --theme light|dark --always-show --take-over-touch-keyboard`。
 - 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
