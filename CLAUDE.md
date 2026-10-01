@@ -24,6 +24,7 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - TIP 端到端：`py -3 tests/e2e/tip_e2e.py --host <x64 bin>/T9Host.exe --target <x64|x86 bin>/test_target.exe`（`ctest -L e2e` 也会跑；未注册时跳过）。构建前先 `taskkill /im T9Host.exe /f`，否则 exe 被占用。
 - **Win7 虚拟机自动化**（VMware，`vmrun`，密码在 git 忽略的 `tests/vm_pass.txt`）：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` 打包后，`cd tools && py -3 vm_deploy.py`（注销旧版、拷入新包、注册、启动 Host），`py -3 vm_e2e.py [panel tip push autoshow switch]` 在虚拟机桌面跑端到端（Python 3.8 免安装版在 `C:	9test\py`）。`py -3 tools/vm.py cmd|shot|put|get|ps` 做单项操作。虚拟机里点击用窗口消息投递（`T9IME_CLICK=post`），因为 VMware 绝对指针会把光标拉回主机鼠标位置；键盘注入正常；Win7 无 InjectTouchInput，触摸项跳过。
 - 控制 API：`src/ctl`（T9Ctl.dll、t9ctl.exe；公开头文件 `src/ctl/t9ctl.h`），示例 `samples/TestHost`（C# 用 `%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe` 构建，只认反斜杠路径；Win10/11 需先启用 Windows 功能 .NET Framework 3.5（`dism /online /enable-feature /featurename:NetFx3 /all`，重启后生效），否则不生成 TestHost.CS.exe）。
+- 项目文档 `Docs/Project.pdf`（架构、调用关系、逐文件说明）由 `py -3 tools/make_project_pdf.py` 生成（需 reportlab）；新增文件必须在脚本的 FILES 里写说明，否则生成失败。
 - 版本号：`project(T9Ime VERSION x.y.z)`（CMakeLists.txt）是唯一来源，第四位是 git 提交数，产品版本串带 commit；`t9_version_resource(<target> "<描述>")` 给目标加 Windows 版本资源（T9Tip.dll、T9Ctl.dll 已加），每次提交后 CMake 自动重新配置。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
 - T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance --theme light|dark --always-show --take-over-touch-keyboard`。
