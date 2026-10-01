@@ -300,3 +300,18 @@
 - **面板**：主题设置（跟随系统/浅/深，命令行 `--theme` 启动时优先）、大小预设（小 340×255、中 400×300、大 520×390 DIP，底边中点不动）。
 - **测试**：单元（词库导出/清空/导入、定制生成、真实部署后 54426→你好、恢复默认删除编译数据）；`e2e_settings` 用窗口消息驱动设置窗口、面板按键用投递点击（不移动鼠标）：模糊音部署生效、繁体"中國"、主题/大小/输入设置保存。
 - 调试教训：测试脚本跨进程发送带指针的控件消息（TCM_GETITEMRECT、伪造 WM_NOTIFY）会让 T9Host 往自己地址空间的无效地址写 → 崩溃（0xC000041D）。只发不带指针的消息或投递鼠标点击。
+
+## 2026-09-30 — 版本资源、README / LICENSE / Project.pdf、安装程序（M7 开始）
+
+- M6 触屏测试全部通过。
+- DLL 版本资源：`project(VERSION)` 唯一来源（升为 0.6.0），第四位为提交数，产品版本带 commit；提交后 CMake 自动重新配置。
+- README.md、LICENSE（GPL-3.0 全文）、`Docs/Project.pdf`（`tools/make_project_pdf.py` 生成：架构图、模块依赖图、调用链、IPC、线程、逐文件说明）。
+- **安装程序**（`installer/T9Ime.iss`，`tools/make_installer.ps1`）：
+  - 一个安装包同时支持 x86 / x64 Windows（x64 上 64 位安装模式），不支持 ARM64；MinVersion 6.1 SP1。
+  - 布局：原生架构的 T9Host / T9Tip / T9Ctl / rime / t9ctl / t9diag 在安装目录；64 位系统的 32 位 T9Tip.dll 在 `x86\`（为此 TIP 与 T9Ctl 找 T9Host.exe 时也看上一级目录）；`data\` 保留文件时间（预部署数据不能显得比源文件旧）。
+  - TIP 用 regserver（x86 用 32bit 标志）注册，卸载时注销；更新时先结束 T9Host，正被程序加载的 DLL 改名为 `*.old-*` 再装新文件（不需重启）；卸载时被占用的 DLL 延迟到重启删除。
+  - 任务：接管系统触摸键盘（默认勾选；以发起安装的用户身份运行 `T9Host --take-over-touch-keyboard`，卸载时 `--restore-touch-keyboard` 还原）、登录时启动（HKLM Run `--background`）。
+  - Win7：缺 KB2670838（以 d2d1.dll ≥ 6.2 判断）拒绝安装，缺 KB4474419（查 CBS 包名）提示可继续；Win8.x 提示未测试。
+  - 组件：输入法（必需）、开发包（t9ctl.h、T9Ctl.cs、x86/x64 的 T9Ctl.dll 与 .lib、TestHost 示例）。
+  - 构建脚本检查两种架构的 DLL 版本等于当前提交号，防止把旧构建打进新版本；体积报告：安装包 25.0 MB（数据 70.1 MB、rime.dll ×2 6.6 MB、T9Host ×2 1.2 MB、T9Tip ×2 0.5 MB，未压缩）。
+  - 尚未实测安装 / 升级 / 卸载流程（需在测试机或虚拟机上进行，避免影响开发机的开发版注册）。

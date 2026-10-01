@@ -54,7 +54,7 @@ function SizeOf($path) { (Get-ChildItem $path -Recurse -File | Measure-Object Le
 $report = @(
     "T9Ime $version (commit $commit) installer",
     "  file     : $($setup.Name)",
-    "  size     : {0:N1} MB" -f ($setup.Length / 1MB),
+    ("  size     : {0:N1} MB" -f ($setup.Length / 1MB)),
     "  sha256   : $hash",
     "  contents (uncompressed):",
     ("    data/            {0,8:N1} MB" -f ((SizeOf "$x64\bin\data") / 1MB)),
