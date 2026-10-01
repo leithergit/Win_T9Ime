@@ -5,6 +5,7 @@ add_library(T9Ctl SHARED t9ctl.h t9ctl.cpp T9Ctl.def)
 target_include_directories(T9Ctl PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(T9Ctl PRIVATE t9common user32 ole32)
 t9_win7_subsystem(T9Ctl WINDOWS)
+t9_version_resource(T9Ctl "T9Ime 九宫格输入法 - 控制接口")
 
 add_executable(t9ctl_cli t9ctl_cli.cpp)
 set_target_properties(t9ctl_cli PROPERTIES OUTPUT_NAME t9ctl PDB_NAME t9ctl_cli)

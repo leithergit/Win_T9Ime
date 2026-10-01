@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(T9Ime VERSION 0.1.0 LANGUAGES CXX)
+project(T9Ime VERSION 0.6.0 LANGUAGES CXX RC)
 
 if(NOT MSVC)
   message(FATAL_ERROR "T9Ime builds with MSVC only")
@@ -25,6 +25,46 @@ add_compile_options(/utf-8 /W4 /permissive- /Zc:__cplusplus /EHsc)
 # Mark an executable as runnable on Windows 7 (subsystem version 6.01).
 function(t9_win7_subsystem target kind)
   target_link_options(${target} PRIVATE "/SUBSYSTEM:${kind},6.01")
+endfunction()
+
+# ---- Version: project(VERSION) above, build number = git commit count ----
+set(T9_BUILD_NUMBER 0)
+set(T9_COMMIT "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-list --count HEAD WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                  OUTPUT_VARIABLE T9_BUILD_NUMBER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                  OUTPUT_VARIABLE T9_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  # Configure again after every commit, so the numbers stay current.
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/.git/HEAD")
+  if(EXISTS "${CMAKE_SOURCE_DIR}/.git/logs/HEAD")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/.git/logs/HEAD")
+  endif()
+endif()
+if(NOT T9_BUILD_NUMBER MATCHES "^[0-9]+$")
+  set(T9_BUILD_NUMBER 0)
+endif()
+message(STATUS "T9Ime ${PROJECT_VERSION}.${T9_BUILD_NUMBER} (${T9_COMMIT})")
+
+# Windows version resource (file properties -> Details) for `target`.
+function(t9_version_resource target description)
+  get_target_property(type ${target} TYPE)
+  get_target_property(output ${target} OUTPUT_NAME)
+  if(NOT output)
+    set(output ${target})
+  endif()
+  if(type STREQUAL "SHARED_LIBRARY")
+    set(T9_FILE_TYPE "VFT_DLL")
+    set(T9_ORIGINAL_FILENAME "${output}.dll")
+  else()
+    set(T9_FILE_TYPE "VFT_APP")
+    set(T9_ORIGINAL_FILENAME "${output}.exe")
+  endif()
+  set(T9_FILE_DESCRIPTION "${description}")
+  set(T9_INTERNAL_NAME "${output}")
+  configure_file("${CMAKE_SOURCE_DIR}/cmake/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/${target}_version.rc" @ONLY)
+  target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/${target}_version.rc")
 endfunction()
 
 # Executables, rime.dll and data share one directory, like the installed layout.
