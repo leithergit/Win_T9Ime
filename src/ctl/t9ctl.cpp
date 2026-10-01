@@ -33,7 +33,8 @@ bool Exists(const std::wstring& path) {
   return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-// T9Host.exe next to this DLL, else next to the registered TIP.
+// T9Host.exe next to this DLL, else next to the registered TIP or one level
+// above it (installations on 64-bit Windows keep the 32-bit TIP in x86\).
 std::wstring HostPath() {
   wchar_t buf[MAX_PATH];
   const DWORD n = GetModuleFileNameW(g_module, buf, MAX_PATH);
@@ -44,8 +45,10 @@ std::wstring HostPath() {
   const std::wstring key = std::wstring(L"CLSID\\") + clsid + L"\\InprocServer32";
   DWORD size = sizeof(buf);
   if (RegGetValueW(HKEY_CLASSES_ROOT, key.c_str(), nullptr, RRF_RT_REG_SZ, nullptr, buf, &size) == ERROR_SUCCESS) {
-    path = DirOf(buf) + L"T9Host.exe";
-    if (Exists(path)) return path;
+    for (const wchar_t* rel : {L"T9Host.exe", L"..\\T9Host.exe"}) {
+      path = DirOf(buf) + rel;
+      if (Exists(path)) return path;
+    }
   }
   return {};
 }

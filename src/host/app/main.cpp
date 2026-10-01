@@ -4,8 +4,11 @@
 //   T9Host.exe [--data <dir>] [--user <dir>] [--settings <ini>] [--show]
 //              [--input pointer|touch|mouse] [--dump-layout <file>] [--no-single-instance]
 //              [--pipe <request pipe name>] [--theme light|dark] [--open-settings]
+//              [--take-over-touch-keyboard] [--restore-touch-keyboard]
 //
 // --open-settings opens the settings window (in the running instance if there is one).
+// --restore-touch-keyboard puts the system touch keyboard / Input Panel
+// settings back and exits (used by the uninstaller).
 
 #include <windows.h>
 #include <sddl.h>
@@ -55,6 +58,7 @@ struct Args {
   bool single_instance = true;
   bool background = false;  // started by a TIP: never disturb a running host
   bool take_over_touch_keyboard = false;
+  bool restore_touch_keyboard = false;
   int theme = -1;
   bool open_settings = false;
 };
@@ -110,6 +114,7 @@ Args ParseArgs() {
     else if (k == L"--theme") a.theme = next() == L"dark" ? 1 : 0;
     else if (k == L"--background") a.background = true;
     else if (k == L"--take-over-touch-keyboard") a.take_over_touch_keyboard = true;
+    else if (k == L"--restore-touch-keyboard") a.restore_touch_keyboard = true;
     else if (k == L"--open-settings") a.open_settings = true;
     else if (k == L"--input") {
       const std::wstring v = next();
@@ -607,6 +612,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
   const Args args = ParseArgs();
 
   HANDLE mutex = nullptr;
+  if (args.restore_touch_keyboard) {  // uninstaller: no host, just the settings
+    touch_keyboard::Restore();
+    return 0;
+  }
   if (args.single_instance) {
     const std::wstring name = L"Local\\T9Ime.Host." + UserSid();
     mutex = CreateMutexW(nullptr, TRUE, name.c_str());

@@ -40,11 +40,16 @@ bool MayLaunchHost() {
   return ok;
 }
 
+// T9Host.exe next to the DLL, or one level up: an installation on 64-bit
+// Windows keeps the 32-bit TIP in <install>\x86\ and one 64-bit host.
 std::wstring HostPath() {
   wchar_t path[MAX_PATH];
   const DWORD n = GetModuleFileNameW(g_module, path, MAX_PATH);
   std::wstring s(path, n);
-  return s.substr(0, s.find_last_of(L"\\/") + 1) + L"T9Host.exe";
+  const std::wstring dir = s.substr(0, s.find_last_of(L"\\/") + 1);
+  const std::wstring here = dir + L"T9Host.exe";
+  if (GetFileAttributesW(here.c_str()) != INVALID_FILE_ATTRIBUTES) return here;
+  return dir + L"..\\T9Host.exe";
 }
 
 }  // namespace
