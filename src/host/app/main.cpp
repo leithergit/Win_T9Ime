@@ -4,11 +4,14 @@
 //   T9Host.exe [--data <dir>] [--user <dir>] [--settings <ini>] [--show]
 //              [--input pointer|touch|mouse] [--dump-layout <file>] [--no-single-instance]
 //              [--pipe <request pipe name>] [--theme light|dark] [--open-settings]
-//              [--take-over-touch-keyboard] [--restore-touch-keyboard]
+//              [--take-over-touch-keyboard] [--restore-touch-keyboard] [--uninstall-user]
 //
 // --open-settings opens the settings window (in the running instance if there is one).
 // --restore-touch-keyboard puts the system touch keyboard / Input Panel
-// settings back and exits (used by the uninstaller).
+// settings back and exits. --uninstall-user does that and also removes T9Ime
+// from the user's input method list (the uninstaller).
+// Started with the default settings file, the host adds T9Ime to the user's
+// input method list once (Windows 8+ does not do that on registration).
 
 #include <windows.h>
 #include <sddl.h>
@@ -59,6 +62,8 @@ struct Args {
   bool background = false;  // started by a TIP: never disturb a running host
   bool take_over_touch_keyboard = false;
   bool restore_touch_keyboard = false;
+  bool uninstall_user = false;
+  bool default_settings = false;  // no --settings: the user's own settings file
   int theme = -1;
   bool open_settings = false;
 };
@@ -115,6 +120,7 @@ Args ParseArgs() {
     else if (k == L"--background") a.background = true;
     else if (k == L"--take-over-touch-keyboard") a.take_over_touch_keyboard = true;
     else if (k == L"--restore-touch-keyboard") a.restore_touch_keyboard = true;
+    else if (k == L"--uninstall-user") a.uninstall_user = true;
     else if (k == L"--open-settings") a.open_settings = true;
     else if (k == L"--input") {
       const std::wstring v = next();
@@ -135,6 +141,7 @@ Args ParseArgs() {
   if (a.settings.empty()) {
     CreateDirectoryW(appdata.c_str(), nullptr);
     a.settings = appdata + L"\\panel.ini";
+    a.default_settings = true;
   }
   return a;
 }
@@ -276,6 +283,12 @@ class HostApp : public SettingsHost {
     AddTrayIcon();
     if (args.show) panel_->Show();
     if (args.open_settings) settings_window_.Show(instance_);
+    // First run for this user (installed host): put T9Ime into the user's
+    // input method list. Once only - the user may remove it again. Test and
+    // debugging runs (--settings) never touch the list.
+    if (args.default_settings && !GetPrivateProfileIntW(L"install", L"user_list", 0, settings_file_.c_str())) {
+      if (user_list::Add()) WritePrivateProfileStringW(L"install", L"user_list", L"1", settings_file_.c_str());
+    }
     return true;
   }
 
@@ -612,8 +625,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
   const Args args = ParseArgs();
 
   HANDLE mutex = nullptr;
-  if (args.restore_touch_keyboard) {  // uninstaller: no host, just the settings
+  if (args.restore_touch_keyboard || args.uninstall_user) {  // uninstaller: no host
     touch_keyboard::Restore();
+    if (args.uninstall_user) {
+      user_list::Remove();
+      WritePrivateProfileStringW(L"install", L"user_list", nullptr, args.settings.c_str());
+    }
     return 0;
   }
   if (args.single_instance) {

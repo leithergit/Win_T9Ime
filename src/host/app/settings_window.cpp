@@ -56,7 +56,7 @@ void SettingsWindow::Show(HINSTANCE instance) {
     wc.hInstance = instance;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);  // same as the tab pages
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1));  // T9Host's icon (res/T9Ime.ico)
     wc.lpszClassName = kClass;
     RegisterClassExW(&wc);
   }

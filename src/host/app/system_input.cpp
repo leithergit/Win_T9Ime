@@ -2,6 +2,7 @@
 
 #include <msctf.h>
 
+#include <cwchar>
 #include <functional>
 #include <iterator>
 #include <mutex>
@@ -145,6 +146,39 @@ bool SettledIn(DWORD tid) {
 }
 
 }  // namespace foreground
+
+namespace user_list {
+
+namespace {
+// "0804:{CLSID}{profile}", the format of InstallLayoutOrTip.
+std::wstring ProfileString() {
+  wchar_t clsid[40], profile[40];
+  StringFromGUID2(kClsidT9Tip, clsid, 40);
+  StringFromGUID2(kGuidT9Profile, profile, 40);
+  wchar_t lang[8];
+  swprintf_s(lang, L"%04x", kT9LangId);
+  return std::wstring(lang) + L":" + clsid + profile;
+}
+
+bool Install(DWORD flags) {
+  wchar_t path[MAX_PATH];
+  const UINT n = GetSystemDirectoryW(path, MAX_PATH);
+  if (!n || n >= MAX_PATH) return false;
+  const std::wstring dll = std::wstring(path, n) + L"\\input.dll";  // full path: no DLL search
+  HMODULE input = LoadLibraryW(dll.c_str());
+  if (!input) return false;
+  using InstallLayoutOrTipFn = BOOL(CALLBACK*)(LPCWSTR, DWORD);
+  auto install = reinterpret_cast<InstallLayoutOrTipFn>(GetProcAddress(input, "InstallLayoutOrTip"));
+  const bool ok = install && install(ProfileString().c_str(), flags);
+  FreeLibrary(input);
+  return ok;
+}
+}  // namespace
+
+bool Add() { return Install(0); }
+bool Remove() { return Install(0x00000001); }  // ILOT_UNINSTALL
+
+}  // namespace user_list
 
 namespace touch_keyboard {
 

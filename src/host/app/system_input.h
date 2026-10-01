@@ -44,6 +44,14 @@ void Stop();
 bool SettledIn(DWORD tid);
 }  // namespace foreground
 
+// The current user's list of input methods (Settings > Language, the language
+// bar): registering the text service makes it available, but Windows 8+ does
+// not add it to existing users' lists. input.dll InstallLayoutOrTip.
+namespace user_list {
+bool Add();
+bool Remove();
+}  // namespace user_list
+
 namespace touch_keyboard {
 
 // True if the Windows touch keyboard is on screen (Windows 8+; false on 7).

@@ -315,3 +315,9 @@
   - 组件：输入法（必需）、开发包（t9ctl.h、T9Ctl.cs、x86/x64 的 T9Ctl.dll 与 .lib、TestHost 示例）。
   - 构建脚本检查两种架构的 DLL 版本等于当前提交号，防止把旧构建打进新版本；体积报告：安装包 25.0 MB（数据 70.1 MB、rime.dll ×2 6.6 MB、T9Host ×2 1.2 MB、T9Tip ×2 0.5 MB，未压缩）。
   - 尚未实测安装 / 升级 / 卸载流程（需在测试机或虚拟机上进行，避免影响开发机的开发版注册）。
+
+## 2026-10-01 — 安装后输入法列表里没有 T9Ime；图标
+
+- 用户报告：安装成功、重启后输入法列表里没有 T9Ime（猜测是没以管理员身份运行）。实际原因：安装程序本来就以管理员运行、注册成功（HKLM\\…\\CTF\\TIP 下有 T9Ime），但 **Windows 8+ 注册文本服务不会把它加进现有用户的输入法列表**（本机核对：中文列表里只有另一个输入法）。Win7 会自动加入"默认启用"的文本服务，所以之前在 Win7 上没暴露；之前的测试都用 test_target 以编程方式激活，也绕过了列表。
+- 修复：T9Host 以默认设置文件运行（即安装后的 Host）时，对该用户首次调用 `input.dll` 的 `InstallLayoutOrTip("0804:{CLSID}{Profile}")` 加入列表，并在 panel.ini `[install] user_list=1` 记下（用户之后自己删掉不再强加）。安装程序结束时以发起安装的用户身份启动 Host，其他用户登录时由 HKLM Run 启动，各自加入。卸载时 `T9Host --uninstall-user`：还原系统触摸键盘设置并 `ILOT_UNINSTALL` 移出列表。测试 / 调试（带 `--settings`）从不改列表。以 `QueryLayoutOrTipString` 验证了 profile 串（S_OK）。
+- **图标**（`tools/make_icon.py` → `res/T9Ime.ico`、`res/T9Ime.png`）：蓝色渐变圆角底、浅色 3×3 九宫格键、白色粗体"T9"；48 px 以下只保留"T9"保证清晰。作为资源 1 编进 T9Tip.dll（TSF profile 注册时引用，输入法列表显示）与 T9Host.exe（快捷方式、设置窗口、卸载项），并作为安装程序图标。T9Host.exe 也加了版本资源。

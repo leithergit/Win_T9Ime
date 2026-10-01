@@ -1,3 +1,5 @@
+<img src="res/T9Ime.png" width="96" align="right" alt="T9Ime">
+
 # T9Ime — Windows 触摸九宫格输入法
 
 T9Ime 是一个面向 Windows 触屏设备的中文输入法：在屏幕上提供手机风格的**九宫格拼音键盘**和**英文全键盘**，同时支持物理键盘全拼输入。它以 TSF（Text Services Framework）文本服务的形式工作，输入引擎是 [librime](https://github.com/rime/librime)（中州韵），词库为 [雾凇拼音 rime-ice](https://github.com/iDvel/rime-ice)。
@@ -77,7 +79,7 @@ pwsh -File build.ps1 -Preset x64-Release     # 配置 + 构建 + 测试（另有
 pwsh -File tools/dev_register.ps1            # 注册开发版输入法（需管理员）
 ```
 
-产物在 `out/build/<preset>/bin`（与安装目录布局一致）。测试：`ctest -LE e2e`（单元、引擎回归、Windows 7 导入检查），`ctest -L e2e`（端到端，会移动鼠标，需要交互桌面）。版本号由 `CMakeLists.txt` 的 `project(VERSION)` 与 git 提交数生成，写入 DLL 版本信息。
+产物在 `out/build/<preset>/bin`（与安装目录布局一致）。安装程序：`pwsh -File tools/make_installer.ps1 -Build`（需要 Inno Setup 6）→ `dist/installer/T9Ime-<版本>-Setup.exe`。测试：`ctest -LE e2e`（单元、引擎回归、Windows 7 导入检查），`ctest -L e2e`（端到端，会移动鼠标，需要交互桌面）。版本号由 `CMakeLists.txt` 的 `project(VERSION)` 与 git 提交数生成，写入 DLL 版本信息。
 
 ## 开源协议
 

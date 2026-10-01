@@ -67,6 +67,17 @@ function(t9_version_resource target description)
   target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/${target}_version.rc")
 endfunction()
 
+# The T9Ime icon (res/T9Ime.ico, drawn by tools/make_icon.py) as resource 1:
+# the first icon of the file, which the TSF profile registration points to.
+function(t9_icon_resource target)
+  file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/res/T9Ime.ico" ico)
+  string(REPLACE "\\" "\\\\" ico "${ico}")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${target}_icon.rc" "1 ICON \"${ico}\"\n")
+  target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/${target}_icon.rc")
+  set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${target}_icon.rc" APPEND PROPERTY OBJECT_DEPENDS
+               "${CMAKE_SOURCE_DIR}/res/T9Ime.ico")
+endfunction()
+
 # Executables, rime.dll and data share one directory, like the installed layout.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 

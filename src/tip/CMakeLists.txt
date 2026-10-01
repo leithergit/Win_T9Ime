@@ -18,6 +18,7 @@ add_library(T9Tip SHARED
 target_link_libraries(T9Tip PRIVATE t9common d2d1 dwrite ole32 oleaut32 uuid user32 gdi32 advapi32)
 t9_win7_subsystem(T9Tip WINDOWS)
 t9_version_resource(T9Tip "T9Ime 九宫格输入法 - 文本服务 (TSF)")
+t9_icon_resource(T9Tip)  # shown in the Windows input method list
 # The registered development DLL is usually loaded by running applications.
 add_custom_command(TARGET T9Tip PRE_LINK
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/move_locked.py" "$<TARGET_FILE:T9Tip>"

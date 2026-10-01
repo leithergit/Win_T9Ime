@@ -16,6 +16,8 @@ target_include_directories(t9panel PUBLIC panel app ipc)
 target_link_libraries(t9panel PUBLIC t9engine t9common d2d1 dwrite comctl32 comdlg32)
 
 add_executable(T9Host WIN32 app/main.cpp app/T9Host.manifest)
+t9_version_resource(T9Host "T9Ime 九宫格输入法 - 主程序")
+t9_icon_resource(T9Host)
 target_link_libraries(T9Host PRIVATE t9panel shell32 ole32)
 t9_win7_subsystem(T9Host WINDOWS)
 add_dependencies(T9Host rime_data copy_rime_dll)

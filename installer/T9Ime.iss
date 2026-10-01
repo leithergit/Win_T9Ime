@@ -48,6 +48,7 @@ ArchitecturesAllowed=x86compatible x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=6.1sp1
 UninstallDisplayIcon={app}\T9Host.exe
+SetupIconFile={#SrcRoot}\res\T9Ime.ico
 UninstallDisplayName=T9Ime 九宫格输入法
 CloseApplications=no
 RestartIfNeededByRun=no
@@ -123,8 +124,9 @@ Filename: "{app}\T9Host.exe"; Parameters: "--take-over-touch-keyboard"; Flags: n
 Filename: "{app}\T9Host.exe"; Parameters: "--background"; Flags: nowait runasoriginaluser; Tasks: not takeover
 
 [UninstallRun]
-; Put the system touch keyboard settings back, then stop the host.
-Filename: "{app}\T9Host.exe"; Parameters: "--restore-touch-keyboard"; Flags: runhidden waituntilterminated; RunOnceId: "RestoreTouchKeyboard"
+; Put the system touch keyboard settings back and take T9Ime out of the
+; user's input method list, then stop the host.
+Filename: "{app}\T9Host.exe"; Parameters: "--uninstall-user"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallUser"
 Filename: "{sys}\taskkill.exe"; Parameters: "/f /im T9Host.exe"; Flags: runhidden waituntilterminated; RunOnceId: "StopHost"
 
 [UninstallDelete]
