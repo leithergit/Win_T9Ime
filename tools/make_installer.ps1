@@ -39,10 +39,14 @@ foreach ($dir in $x64, $x86) {
 }
 if (git -C $root status --porcelain) { Write-Warning 'working tree has uncommitted changes' }
 
+# Windows 7 Platform Update KB2670838 bundled with the setup (installer\fetch_prereqs.ps1).
+$prereq = Join-Path $root 'third_party\prereq'
+& (Join-Path $root 'installer\fetch_prereqs.ps1')
+
 $out = Join-Path $root 'dist\installer'
 New-Item -ItemType Directory -Force $out | Out-Null
 & $iscc /Qp "/DAppVersion=$version" "/DCommit=$commit" "/DX64Bin=$x64\bin" "/DX86Bin=$x86\bin" `
-    "/DX64Lib=$x64\src\ctl" "/DX86Lib=$x86\src\ctl" "/DSrcRoot=$root" "/DOutputDir=$out" `
+    "/DX64Lib=$x64\src\ctl" "/DX86Lib=$x86\src\ctl" "/DSrcRoot=$root" "/DPrereqDir=$prereq" "/DOutputDir=$out" `
     (Join-Path $root 'installer\T9Ime.iss')
 if ($LASTEXITCODE) { throw 'ISCC failed' }
 
@@ -60,7 +64,8 @@ $report = @(
     ("    data/            {0,8:N1} MB" -f ((SizeOf "$x64\bin\data") / 1MB)),
     ("    rime.dll x64/x86 {0,8:N1} MB" -f (((Get-Item "$x64\bin\rime.dll").Length + (Get-Item "$x86\bin\rime.dll").Length) / 1MB)),
     ("    T9Host x64/x86   {0,8:N1} MB" -f (((Get-Item "$x64\bin\T9Host.exe").Length + (Get-Item "$x86\bin\T9Host.exe").Length) / 1MB)),
-    ("    T9Tip x64/x86    {0,8:N2} MB" -f (((Get-Item "$x64\bin\T9Tip.dll").Length + (Get-Item "$x86\bin\T9Tip.dll").Length) / 1MB))
+    ("    T9Tip x64/x86    {0,8:N2} MB" -f (((Get-Item "$x64\bin\T9Tip.dll").Length + (Get-Item "$x86\bin\T9Tip.dll").Length) / 1MB)),
+    ("    KB2670838 x64/x86 {0,7:N1} MB (installed on Windows 7 only when missing)" -f ((SizeOf $prereq) / 1MB))
 )
 $report | Set-Content -Encoding utf8 (Join-Path $out "T9Ime-$version-Setup.txt")
 $report | ForEach-Object { Write-Host $_ }

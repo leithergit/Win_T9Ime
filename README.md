@@ -65,7 +65,7 @@ T9Ime 是一个面向 Windows 触屏设备的中文输入法：在屏幕上提�
 
 ## 系统要求
 
-- Windows 7 SP1（需 KB2670838 平台更新，建议 KB4474419）、Windows 10、Windows 11；x86 或 x64。不支持 Windows 8/8.1 与 ARM64。
+- Windows 7 SP1（需 KB2670838 平台更新——安装包已附带，缺少时自动离线安装；建议 KB4474419）、Windows 10、Windows 11；x86 或 x64。不支持 Windows 8/8.1 与 ARM64。
 - 运行时无需 VC++ 运行库（静态链接 CRT）。
 
 ## 构建

@@ -6,3 +6,4 @@ __pycache__/
 dist/
 *.old-*
 tests/vm_pass.txt
+third_party/prereq/

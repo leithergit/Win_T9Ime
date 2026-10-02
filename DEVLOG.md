@@ -321,3 +321,10 @@
 - 用户报告：安装成功、重启后输入法列表里没有 T9Ime（猜测是没以管理员身份运行）。实际原因：安装程序本来就以管理员运行、注册成功（HKLM\\…\\CTF\\TIP 下有 T9Ime），但 **Windows 8+ 注册文本服务不会把它加进现有用户的输入法列表**（本机核对：中文列表里只有另一个输入法）。Win7 会自动加入"默认启用"的文本服务，所以之前在 Win7 上没暴露；之前的测试都用 test_target 以编程方式激活，也绕过了列表。
 - 修复：T9Host 以默认设置文件运行（即安装后的 Host）时，对该用户首次调用 `input.dll` 的 `InstallLayoutOrTip("0804:{CLSID}{Profile}")` 加入列表，并在 panel.ini `[install] user_list=1` 记下（用户之后自己删掉不再强加）。安装程序结束时以发起安装的用户身份启动 Host，其他用户登录时由 HKLM Run 启动，各自加入。卸载时 `T9Host --uninstall-user`：还原系统触摸键盘设置并 `ILOT_UNINSTALL` 移出列表。测试 / 调试（带 `--settings`）从不改列表。以 `QueryLayoutOrTipString` 验证了 profile 串（S_OK）。
 - **图标**（`tools/make_icon.py` → `res/T9Ime.ico`、`res/T9Ime.png`）：蓝色渐变圆角底、浅色 3×3 九宫格键、白色粗体"T9"；48 px 以下只保留"T9"保证清晰。作为资源 1 编进 T9Tip.dll（TSF profile 注册时引用，输入法列表显示）与 T9Host.exe（快捷方式、设置窗口、卸载项），并作为安装程序图标。T9Host.exe 也加了版本资源。
+
+## 2026-10-02 — 安装包附带 Windows 7 平台更新 KB2670838
+
+- 用户要求：Win7 缺 KB2670838 时以前是拒绝安装、让用户自己联网下载，网络差或离线的现场设备装不上。现在把 x64 / x86 两个 .msu（11.8 MB + 5.9 MB，微软 windowsupdate 下载地址，按文件名里的 SHA-1 校验）随安装包附带。`installer/fetch_prereqs.ps1` 下载到 `third_party/prereq/`（不入库），`make_installer.ps1` 每次先调用它（已存在且校验通过则跳过）并以 `/DPrereqDir` 传给 ISCC。
+- 安装程序：Win7 上按 `d2d1.dll` 版本 ≥ 6.2 判定是否已装（与原检测一致）；缺少时"准备安装"页说明将离线安装该更新并需重启；安装步骤开始时解出对应架构的 .msu，`wusa /quiet /norestart`，状态栏显示"正在安装 Windows 7 平台更新 KB2670838，请稍候（约需几分钟）…"并走跑马灯进度条。返回 0 / 3010 → 完成后要求重启；0x240006（已安装）/ 0x80240017（不适用）→ 继续；其他错误码 → 报错并中止（提示检查 SP1）。.msu 用 `dontcopy nocompression`，不进安装目录；已装更新的 Win7 与 Win10/11 不解出。
+- 更新安装后 Direct2D 要重启才换新，所以这次不在安装结束时启动 Host，而是写 HKLM RunOnce（接管系统键盘 → `--take-over-touch-keyboard`；否则未选开机启动时 `--background`），重启登录后启动并把 T9Ime 加入输入法列表。
+- 安装包 25.1 MB → 42.1 MB。

@@ -1,7 +1,7 @@
 ﻿; T9Ime installer (Inno Setup 6). Build with tools\make_installer.ps1, which
 ; passes the version and the build directories:
 ;   ISCC /DAppVersion=0.6.0.49 /DCommit=abc1234 /DX64Bin=... /DX86Bin=...
-;        /DX64Lib=... /DX86Lib=... /DSrcRoot=... /DOutputDir=... installer\T9Ime.iss
+;        /DX64Lib=... /DX86Lib=... /DSrcRoot=... /DPrereqDir=... /DOutputDir=... installer\T9Ime.iss
 ;
 ; Layout of {app}:
 ;   T9Host.exe T9Tip.dll T9Ctl.dll rime.dll t9ctl.exe t9diag.exe   native (x64 or x86)
@@ -89,6 +89,10 @@ Source: "{#X86Bin}\t9diag.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: n
 ; ---- Rime data (architecture independent; original file times are kept, the
 ;      pre-deployed build/ must not look older than its sources)
 Source: "{#X64Bin}\data\*"; DestDir: "{app}\data"; Excludes: ".t9ime-data-stamp"; Flags: ignoreversion recursesubdirs createallsubdirs
+; ---- Windows 7 Platform Update KB2670838 (installer\fetch_prereqs.ps1): installed
+;      from the setup when missing, so offline devices need no download.
+Source: "{#PrereqDir}\Windows6.1-KB2670838-x64.msu"; Flags: dontcopy nocompression
+Source: "{#PrereqDir}\Windows6.1-KB2670838-x86.msu"; Flags: dontcopy nocompression
 ; ---- Documents
 Source: "{#SrcRoot}\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#SrcRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -111,6 +115,8 @@ Source: "{#X86Bin}\T9Ctl.dll"; DestDir: "{app}\samples"; Components: sdk; Flags:
 [Registry]
 ; Start the host at logon for every user (also started on demand by the input method).
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "T9Ime"; ValueData: """{app}\T9Host.exe"" --background"; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\RunOnce"; ValueType: string; ValueName: "T9ImeSetup"; ValueData: """{app}\T9Host.exe"" --take-over-touch-keyboard"; Tasks: takeover; Check: PlatformUpdateInstalled
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\RunOnce"; ValueType: string; ValueName: "T9ImeSetup"; ValueData: """{app}\T9Host.exe"" --background"; Tasks: not takeover and not autostart; Check: PlatformUpdateInstalled
 
 [Icons]
 Name: "{group}\T9Ime 设置"; Filename: "{app}\T9Host.exe"; Parameters: "--open-settings"
@@ -120,8 +126,10 @@ Name: "{group}\卸载 T9Ime"; Filename: "{uninstallexe}"
 [Run]
 ; As the user who started the setup (not the elevated account): the host and
 ; the touch keyboard settings (HKCU) belong to that user.
-Filename: "{app}\T9Host.exe"; Parameters: "--take-over-touch-keyboard"; Flags: nowait runasoriginaluser; Tasks: takeover
-Filename: "{app}\T9Host.exe"; Parameters: "--background"; Flags: nowait runasoriginaluser; Tasks: not takeover
+; Not before the restart the Windows 7 platform update needs (Direct2D is
+; replaced only then): RunOnce starts the host at the next logon instead.
+Filename: "{app}\T9Host.exe"; Parameters: "--take-over-touch-keyboard"; Flags: nowait runasoriginaluser; Tasks: takeover; Check: not PlatformUpdateInstalled
+Filename: "{app}\T9Host.exe"; Parameters: "--background"; Flags: nowait runasoriginaluser; Tasks: not takeover; Check: not PlatformUpdateInstalled
 
 [UninstallRun]
 ; Put the system touch keyboard settings back and take T9Ime out of the
@@ -140,6 +148,13 @@ Type: dirifempty; Name: "{app}"
 const
   KB_PLATFORM_UPDATE = 'KB2670838';
   KB_SHA2 = 'KB4474419';
+  WUSA_REBOOT_REQUIRED = 3010;
+  WUSA_ALREADY_INSTALLED = $240006;  // WU_S_ALREADY_INSTALLED
+  WUSA_NOT_APPLICABLE = $80240017;   // WU_E_NOT_APPLICABLE
+
+var
+  NeedPlatformUpdate: Boolean;       // Windows 7 without KB2670838: install the bundled package
+  PlatformUpdateDone: Boolean;       // installed by this setup: restart at the end
 
 // Direct2D 1.1 (d2d1.dll 6.2+) arrives with the Windows 7 platform update.
 function HasPlatformUpdate(): Boolean;
@@ -173,12 +188,8 @@ begin
   Result := True;
   GetWindowsVersionEx(V);
   if (V.Major = 6) and (V.Minor = 1) then begin
-    if not HasPlatformUpdate() then begin
-      MsgBox('T9Ime 需要 Windows 7 平台更新 ' + KB_PLATFORM_UPDATE + '（提供 Direct2D / DirectWrite）。' + #13#10 +
-             '请先通过 Windows Update 或微软下载中心安装该更新，再运行本安装程序。', mbCriticalError, MB_OK);
-      Result := False;
-      Exit;
-    end;
+    // Missing platform update: installed from the bundled package (see below).
+    NeedPlatformUpdate := not HasPlatformUpdate();
     if not HasUpdate(KB_SHA2) then
       if MsgBox('建议先安装 ' + KB_SHA2 + '（SHA-2 代码签名支持）。不安装也能使用 T9Ime。' + #13#10#13#10 + '现在继续安装吗？',
                 mbConfirmation, MB_YESNO) = IDNO then begin
@@ -190,6 +201,61 @@ begin
     if MsgBox('T9Ime 未在 Windows 8 / 8.1 上测试，可能无法正常工作。' + #13#10#13#10 + '仍要安装吗？',
               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDNO then
       Result := False;
+end;
+
+// Ready page: say what is going to happen.
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo,
+  MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := '';
+  if NeedPlatformUpdate then
+    Result := 'Windows 7 平台更新：' + NewLine + Space + '系统缺少 ' + KB_PLATFORM_UPDATE +
+              '（Direct2D / DirectWrite），将先用安装包内附带的更新安装（无需联网，约需几分钟），' + NewLine + Space +
+              '安装完成后需要重新启动电脑，重启后 T9Ime 自动启动。' + NewLine + NewLine;
+  if MemoDirInfo <> '' then Result := Result + MemoDirInfo + NewLine + NewLine;
+  if MemoTypeInfo <> '' then Result := Result + MemoTypeInfo + NewLine + NewLine;
+  if MemoComponentsInfo <> '' then Result := Result + MemoComponentsInfo + NewLine + NewLine;
+  if MemoTasksInfo <> '' then Result := Result + MemoTasksInfo + NewLine + NewLine;
+end;
+
+// Installs the bundled KB2670838 for the system's architecture with wusa
+// (quiet, no restart; the setup asks for the restart at the end).
+procedure InstallPlatformUpdate();
+var
+  Msu: String;
+  Code: Integer;
+begin
+  if IsWin64 then Msu := 'Windows6.1-KB2670838-x64.msu' else Msu := 'Windows6.1-KB2670838-x86.msu';
+  WizardForm.StatusLabel.Caption := '正在安装 Windows 7 平台更新 ' + KB_PLATFORM_UPDATE + '，请稍候（约需几分钟）…';
+  WizardForm.FilenameLabel.Caption := Msu;
+  WizardForm.ProgressGauge.Style := npbstMarquee;
+  WizardForm.Refresh;
+  ExtractTemporaryFile(Msu);
+  if not Exec(ExpandConstant('{sys}\wusa.exe'), '"' + ExpandConstant('{tmp}\') + Msu + '" /quiet /norestart', '',
+              SW_HIDE, ewWaitUntilTerminated, Code) then
+    RaiseException('无法启动 Windows 更新安装程序（wusa.exe）：' + SysErrorMessage(Code));
+  WizardForm.ProgressGauge.Style := npbstNormal;
+  if (Code = 0) or (Code = WUSA_REBOOT_REQUIRED) then
+    PlatformUpdateDone := True
+  else if (Code <> WUSA_ALREADY_INSTALLED) and (Code <> WUSA_NOT_APPLICABLE) then
+    RaiseException('Windows 7 平台更新 ' + KB_PLATFORM_UPDATE + ' 安装失败（错误代码 0x' + Format('%.8x', [Code]) + '）。' + #13#10 +
+                   '请确认系统已安装 Service Pack 1，或从 Windows Update 安装该更新后再运行本安装程序。');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssInstall) and NeedPlatformUpdate then InstallPlatformUpdate();
+end;
+
+function PlatformUpdateInstalled(): Boolean;
+begin
+  Result := PlatformUpdateDone;
+end;
+
+// The platform update takes effect after a restart.
+function NeedRestart(): Boolean;
+begin
+  Result := PlatformUpdateDone;
 end;
 
 procedure StopHost();

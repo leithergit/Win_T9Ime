@@ -26,7 +26,7 @@ M4（面板经 TIP 推送上屏、InputScope、自动显隐、自动切换本 IM
 - 控制 API：`src/ctl`（T9Ctl.dll、t9ctl.exe；公开头文件 `src/ctl/t9ctl.h`），示例 `samples/TestHost`（C# 用 `%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe` 构建，只认反斜杠路径；Win10/11 需先启用 Windows 功能 .NET Framework 3.5（`dism /online /enable-feature /featurename:NetFx3 /all`，重启后生效），否则不生成 TestHost.CS.exe）。
 - 项目文档 `Docs/Project.pdf`（架构、调用关系、逐文件说明）由 `py -3 tools/make_project_pdf.py` 生成（需 reportlab）；新增文件必须在脚本的 FILES 里写说明，否则生成失败。
 - 版本号：`project(T9Ime VERSION x.y.z)`（CMakeLists.txt）是唯一来源，第四位是 git 提交数，产品版本串带 commit；`t9_version_resource(<target> "<描述>")` 给目标加 Windows 版本资源（T9Tip.dll、T9Ctl.dll 已加），每次提交后 CMake 自动重新配置。
-- 安装程序：`pwsh -File tools/make_installer.ps1 [-Build]`（Inno Setup 6，脚本 `installer/T9Ime.iss`）→ `dist/installer/T9Ime-<版本>-Setup.exe` 与体积报告；先提交再构建（脚本检查 DLL 版本与当前提交一致）。安装布局：原生架构文件在安装目录，64 位系统的 32 位 TIP 在 `x86\`（TIP / T9Ctl 会到上一级找 T9Host.exe）。
+- 安装程序：`pwsh -File tools/make_installer.ps1 [-Build]`（Inno Setup 6，脚本 `installer/T9Ime.iss`）→ `dist/installer/T9Ime-<版本>-Setup.exe` 与体积报告；先提交再构建（脚本检查 DLL 版本与当前提交一致）。安装包附带 Win7 平台更新 KB2670838 x64/x86（`installer/fetch_prereqs.ps1` 下载到 `third_party/prereq/`，不入库，make_installer 自动调用）；Win7 缺该更新时安装程序用 wusa 离线安装、要求重启，Host 改由 RunOnce 在重启后启动。安装布局：原生架构文件在安装目录，64 位系统的 32 位 TIP 在 `x86\`（TIP / T9Ctl 会到上一级找 T9Host.exe）。
 - 真机测试包：`pwsh -File tools/make_test_package.ps1 -Milestone Mx` → `dist/Mx/`，清单写在 `Docs/testing/`。
 - T9Host 调试参数：`--data --user --settings --show --input pointer|touch|mouse --dump-layout <json> --no-single-instance --theme light|dark --always-show --take-over-touch-keyboard`。
 - 引擎调试：`out/build/x64-Release/bin/t9repl.exe --data <data> --user <dir> [--fresh] [--script f]`，命令见文件头注释。
